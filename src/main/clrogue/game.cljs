@@ -11,7 +11,6 @@
 (def green [0 255 0 255])
 (def red [255 0 0 255])
 
-
 (defn make-game-state[]
   {:player {:position [1 1] :visual {:symbol \@ :foreground white :background black}}
    :entities [{:position [2 2] :visual {:symbol \@ :foreground green :background black}}
@@ -70,23 +69,31 @@
     :right (update position 0 inc)
     position))
 
+(defn player-handle [] {:type :player})
+(defn entity-handle [id] {:type :entity :index id})
+
+;; unordered, for iteration, for combat if initiative is ever a thing, sort by that.
+(defn entity-handles [state]
+  (into [(player-handle)] (vec (map-indexed #(entity-handle %1) (:entities state)))))
+
+(defn lookup-entity [state handle]
+  (case (:type handle)
+    :player (:player state)
+    :entity (get (:entities state) (:index handle))))
+
 ;; move to have handles to things to make things more convenient again.
 (defn try-move [state position direction]
   (let [new-position (move position direction)
         stepped-tile? (= (get-in (:dungeon state) new-position nil) \#)        
-        stepped-player? (= (:position (:player state)) new-position)
-        stepped-entity? (some (fn [[index entity]]
-                                (when (= (:position entity) new-position)
-                                  index))
-                              (map-indexed vector (:entities state)))]
-    (when (or stepped-entity? stepped-tile? stepped-player?)
-      {:tile stepped-entity?
-       :player stepped-player?
-       :entity-index stepped-entity?})))
+        stepped-entity? (some (fn [entity-handle]
+                                (when (= (:position (lookup-entity state entity-handle)) new-position)
+                                  entity-handle))
+                              (entity-handles state))]
+    (when (and direction (or stepped-entity? stepped-tile?))
+      {:tile stepped-tile?
+       :entity stepped-entity?})))
 
-(defn entity-update [entity state]
-  entity)
-
+(defn entity-update [entity state] entity)
 (defn player-update [entity state input]
   (update entity :position
           (fn [position]

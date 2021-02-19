@@ -93,7 +93,6 @@
       {:tile stepped-tile?
        :entity stepped-entity?})))
 
-(defn entity-update [entity state] entity)
 (defn player-update [entity state input]
   (update entity :position
           (fn [position]
@@ -104,8 +103,7 @@
 
 (defn state-update [state input delta-time]
   (as-> state state
-    (update state :player #(player-update % state input))
-    (update state :entities #(entity-update % state))))
+    (update state :player #(player-update % state input))))
 
 (defn game-loop [game-state time]
   (.requestAnimationFrame js/window

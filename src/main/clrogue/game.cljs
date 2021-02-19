@@ -17,22 +17,20 @@
 (defn attenuation [constant distance]
   (/ 1.0 (+ 1 (* constant distance))))
 
+;; TODO, make these take rest arguments
 (defn vector-add [a b] (map + a b))
 (defn vector-subtract [a b] (map - a b))
 (defn vector-scale [a b] (map #(* % b) a))
 (defn vector-component-multiply [a b] (map * a b))
 
-(defn contribution [source to distance-function]
-  (vector-scale white
-                (* 4.0 (attenuation 6.5 (distance-function to source)))))
+(defn contribution [base-color source to distance-function]
+  (let [attenuation (attenuation 4.5 (distance-function to (:position source)))]
+    (vector-scale
+     (vector-component-multiply base-color (vector-scale (:color source) (:ambient-strength source)))
+     (* (:power source) attenuation))))
 
-(def ambient-lighting-power 0.1)
 (defn color-lighting [position base-color sources]
-  (reduce vector-add
-          (vector-scale base-color ambient-lighting-power)
-          (mapv (fn [source]
-                  (contribution source position euclidean-distance))
-                sources)))
+  (reduce vector-add (mapv #(contribution base-color % position euclidean-distance) sources)))
 
 (defn make-game-state[]
   {:player {:position [1 1] :visual {:symbol \@ :foreground white :background black}}
@@ -123,9 +121,14 @@
     (update state :player #(player-update % state input))))
 
 (defn light-sources [time]
-  [[(+ (* (Math/sin (/ time 1000)) 2.5) 2.5) 4]
-   ;; [6 2]
-   ])
+  [{:position [(+ (* (Math/sin (/ time 1000)) 2.5) 2.5) 4]
+    :power (+ (* (Math/sin (/ (+ 500 time) 1000)) 2.5) 2.5)
+    :color [199 128 255 255]
+    :ambient-strength 0.0065}
+   {:position [6 2]
+    :power 1
+    :color white
+    :ambient-strength 0.0085}])
 
 (defn state-draw [canvas-context state input ticks]
 (canvas/clear-screen! canvas-context black)

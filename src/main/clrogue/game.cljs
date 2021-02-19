@@ -70,6 +70,7 @@
                        :right (update position 0 inc)
                        position)
         stepped-tile? (= (get-in (:dungeon state) new-position nil) \#)        
+        stepped-player? (= (:position (:player state)) new-position)
         stepped-entity? (some (fn [[index entity]]
                                 (if (= (:position entity) new-position)
                                   {:type :entity

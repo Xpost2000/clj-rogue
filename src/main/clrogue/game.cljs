@@ -70,6 +70,7 @@
     :right (update position 0 inc)
     position))
 
+;; move to have handles to things to make things more convenient again.
 (defn try-move [state position direction]
   (let [new-position (move position direction)
         stepped-tile? (= (get-in (:dungeon state) new-position nil) \#)        

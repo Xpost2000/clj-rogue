@@ -11,9 +11,11 @@
 (def green [0 255 0 255])
 (def red [255 0 0 255])
 
+
 (defn make-game-state[]
-  {:player {:position [1 1]
-            :visual {:symbol \@:foreground white :background black}}
+  {:player {:position [1 1] :visual {:symbol \@ :foreground white :background black}}
+   :entities [{:position [2 2] :visual {:symbol \@ :foreground green :background black}}
+              {:position [4 4] :visual {:symbol \@ :foreground green :background black}}]
    :dungeon [[\# \# \# \# \# \# \# \#]
              [\# \. \. \. \. \. \. \#]
              [\# \. \. \. \. \. \. \#]
@@ -50,7 +52,9 @@
   (canvas/clear-screen! canvas-context black)
   (let [camera [0 0]]
     (draw-tilemap! canvas-context camera (:dungeon state))
-    (draw-entity! canvas-context camera (:player state))))
+    (doseq [entity (into (:entities state) [(:player state)])]
+      (draw-entity! canvas-context camera entity))
+    ))
 
 (defn movement-direction [input]
   (cond (input/event-keydown input "ArrowUp") :up
@@ -58,22 +62,39 @@
         (input/event-keydown input "ArrowLeft") :left
         (input/event-keydown input "ArrowRight") :right))
 
-(defn try-move [position direction tiles]
+(defn try-move [state position direction]
   (let [new-position (case direction
                        :up (update position 1 dec)
                        :down (update position 1 inc)
                        :left (update position 0 dec)
                        :right (update position 0 inc)
-                       position)]
-    (if (= (get-in tiles new-position nil) \#)
-      position
-      new-position)))
+                       position)
+        stepped-tile? (= (get-in (:dungeon state) new-position nil) \#)        
+        stepped-entity? (some (fn [[index entity]]
+                                (if (= (:position entity) new-position)
+                                  {:type :entity
+                                   :index index}))
+                              (map-indexed vector (:entities state)))]
+    (cond stepped-tile? position
+          stepped-entity? stepped-entity?
+          :else new-position)))
+
+(defn entity-update [entity state]
+  entity)
+
+(defn player-update [entity state input]
+  (update entity :position
+          (fn [position]
+            (let [movement-result (try-move state position (movement-direction input))]
+              (if-let [bumped-entity? (:index movement-result)]
+                (do (println (str "I hit somethin " (:index movement-result)))
+                    position)
+                movement-result)))))
 
 (defn state-update [state input delta-time]
-  (update-in state [:player :position] #(try-move
-                                         %
-                                         (movement-direction input)
-                                         (:dungeon state))))
+  (as-> state state
+    (update state :player #(player-update % state input))
+    (update state :entities #(entity-update % state))))
 
 (defn game-loop [game-state time]
   (.requestAnimationFrame js/window

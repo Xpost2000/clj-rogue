@@ -11,6 +11,29 @@
 (def green [0 255 0 255])
 (def red [255 0 0 255])
 
+(defn euclidean-distance [a b]
+  (Math/sqrt (reduce + (map #(* % %) (map - b a)))))
+
+(defn attenuation [constant distance]
+  (/ 1.0 (+ 1 (* constant distance))))
+
+(defn vector-add [a b] (map + a b))
+(defn vector-subtract [a b] (map - a b))
+(defn vector-scale [a b] (map #(* % b) a))
+(defn vector-component-multiply [a b] (map * a b))
+
+(defn contribution [source to distance-function]
+  (vector-scale white
+                (* 4.0 (attenuation 6.5 (distance-function to source)))))
+
+(def ambient-lighting-power 0.1)
+(defn color-lighting [position base-color sources]
+  (reduce vector-add
+          (vector-scale base-color ambient-lighting-power)
+          (mapv (fn [source]
+                  (contribution source position euclidean-distance))
+                sources)))
+
 (defn make-game-state[]
   {:player {:position [1 1] :visual {:symbol \@ :foreground white :background black}}
    :entities [{:position [2 2] :visual {:symbol \@ :foreground green :background black}}
@@ -30,30 +53,25 @@
     (canvas/fill-rectangle! canvas-context [x y 8 16] background-color)
     (canvas/draw-text! canvas-context character [x y] "Dina" foreground-color 16)))
 
-(defn draw-entity! [canvas-context camera entity]
+(defn draw-entity! [canvas-context camera entity light-sources]
   (let [{:keys [symbol foreground background]} (:visual entity)]
-    (draw-character! canvas-context camera symbol (:position entity) foreground background)))
+    (draw-character! canvas-context camera symbol (:position entity)
+                     (color-lighting (:position entity) foreground light-sources) background)))
 
-(defn draw-tilemap! [canvas-context camera tilemap]
+(defn draw-tilemap! [canvas-context camera tilemap light-sources]
   (let [width (count tilemap)
         height (count tilemap)]
     (doseq [y (range height)]
       (doseq [x (range width)]
         (let [character (get-in tilemap [y x] \?)]
           (draw-character! canvas-context camera character [x y]
-                           (case character
-                             \# white
-                             \. red
-                             black)
+                           (color-lighting [x y]
+                                           (case character
+                                             \# white
+                                             \. red
+                                             black)
+                                           light-sources)
                            black))))))
-
-(defn state-draw [canvas-context input state]
-  (canvas/clear-screen! canvas-context black)
-  (let [camera [0 0]]
-    (draw-tilemap! canvas-context camera (:dungeon state))
-    (doseq [entity (into (:entities state) [(:player state)])]
-      (draw-entity! canvas-context camera entity))
-    ))
 
 (defn movement-direction [input]
   (cond (input/event-keydown input "ArrowUp") :up
@@ -71,7 +89,6 @@
 
 (defn player-handle [] {:type :player})
 (defn entity-handle [id] {:type :entity :index id})
-
 ;; unordered, for iteration, for combat if initiative is ever a thing, sort by that.
 (defn entity-handles [state]
   (into [(player-handle)] (vec (map-indexed #(entity-handle %1) (:entities state)))))
@@ -101,25 +118,38 @@
                 position
                 (move position (movement-direction input)))))))
 
-(defn state-update [state input delta-time]
+(defn state-update [state input delta-time ticks]
   (as-> state state
     (update state :player #(player-update % state input))))
 
+(defn light-sources [time]
+  [[(+ (* (Math/sin (/ time 1000)) 2.5) 2.5) 4]
+   ;; [6 2]
+   ])
+
+(defn state-draw [canvas-context state input ticks]
+(canvas/clear-screen! canvas-context black)
+(let [camera [0 0]]
+  (draw-tilemap! canvas-context camera (:dungeon state) (light-sources ticks))
+  (doseq [entity (into (:entities state) [(:player state)])]
+    (draw-entity! canvas-context camera entity (light-sources ticks)))))
+
 (defn game-loop [game-state time]
-  (.requestAnimationFrame js/window
-                          (fn [current-time]
-                            (game-loop
-                             (state-update game-state
-                                           @input-state
-                                           (max (/ (- current-time time) 1000) (/ 1 60)))
-                             current-time)))
-  (state-draw game-canvas-context @input-state game-state)
-  (swap! input-state input/new-frame))
+(.requestAnimationFrame js/window
+                        (fn [current-time]
+                          (game-loop
+                           (state-update game-state
+                                         @input-state
+                                         (max (/ (- current-time time) 1000) (/ 1 60))
+                                         current-time)
+                           current-time)))
+(state-draw game-canvas-context game-state @input-state time)
+(swap! input-state input/new-frame))
 
 (defn setup-main-game-loop! []
-  (let [input-event-handlers (input/make-default-handlers input-state)]
-    (.addEventListener js/document "keydown" (:keydown input-event-handlers))
-    (.addEventListener js/document "keyup" (:keyup input-event-handlers))
-    (game-loop (make-game-state) 0)))
+(let [input-event-handlers (input/make-default-handlers input-state)]
+  (.addEventListener js/document "keydown" (:keydown input-event-handlers))
+  (.addEventListener js/document "keyup" (:keyup input-event-handlers))
+  (game-loop (make-game-state) 0)))
 
 (defn init [] (setup-main-game-loop!))

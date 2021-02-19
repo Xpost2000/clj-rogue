@@ -30,7 +30,8 @@
      (* (:power source) attenuation))))
 
 (defn color-lighting [position base-color sources]
-  (reduce vector-add (mapv #(contribution base-color % position euclidean-distance) sources)))
+  (reduce vector-add
+          (mapv #(contribution base-color % position euclidean-distance) sources)))
 
 (defn make-game-state[]
   {:player {:position [1 1] :visual {:symbol \@ :foreground white :background black}}
@@ -47,7 +48,7 @@
 
 ;; These are grid aligned.
 (defn draw-character! [canvas-context [camera-x camera-y] character [x y] foreground-color background-color]
-  (let [[x y] [(+ (* x 8) camera-x) (+ (* y 16) camera-y)]]
+  (let [[x y] [(* (+ camera-x x) 8) (* (+ camera-y y) 16) camera-y]]
     (canvas/fill-rectangle! canvas-context [x y 8 16] background-color)
     (canvas/draw-text! canvas-context character [x y] "Dina" foreground-color 16)))
 
@@ -120,22 +121,24 @@
   (as-> state state
     (update state :player #(player-update % state input))))
 
-(defn light-sources [time]
+(defn light-sources [state time]
   [{:position [(+ (* (Math/sin (/ time 1000)) 2.5) 2.5) 4]
-    :power (+ (* (Math/sin (/ (+ 500 time) 1000)) 2.5) 2.5)
-    :color [199 128 255 255]
-    :ambient-strength 0.0065}
+    :power 1.5
+    :color white
+    :ambient-strength 0.0085}
    {:position [6 2]
     :power 1
     :color white
     :ambient-strength 0.0085}])
 
 (defn state-draw [canvas-context state input ticks]
-(canvas/clear-screen! canvas-context black)
-(let [camera [0 0]]
-  (draw-tilemap! canvas-context camera (:dungeon state) (light-sources ticks))
-  (doseq [entity (into (:entities state) [(:player state)])]
-    (draw-entity! canvas-context camera entity (light-sources ticks)))))
+  (canvas/clear-screen! canvas-context black)
+  (let [camera [(+ (* (Math/sin (/ ticks 2000)) 10) 68)
+                (+ (* (Math/cos (/ ticks 2000)) 10) 4)]
+        light-sources (light-sources state ticks)]
+    (draw-tilemap! canvas-context camera (:dungeon state) light-sources)
+    (doseq [entity (into (:entities state) [(:player state)])]
+      (draw-entity! canvas-context camera entity light-sources))))
 
 (defn game-loop [game-state time]
 (.requestAnimationFrame js/window

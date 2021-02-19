@@ -62,23 +62,26 @@
         (input/event-keydown input "ArrowLeft") :left
         (input/event-keydown input "ArrowRight") :right))
 
+(defn move [position direction]
+  (case direction
+    :up (update position 1 dec)
+    :down (update position 1 inc)
+    :left (update position 0 dec)
+    :right (update position 0 inc)
+    position))
+
 (defn try-move [state position direction]
-  (let [new-position (case direction
-                       :up (update position 1 dec)
-                       :down (update position 1 inc)
-                       :left (update position 0 dec)
-                       :right (update position 0 inc)
-                       position)
+  (let [new-position (move position direction)
         stepped-tile? (= (get-in (:dungeon state) new-position nil) \#)        
         stepped-player? (= (:position (:player state)) new-position)
         stepped-entity? (some (fn [[index entity]]
-                                (if (= (:position entity) new-position)
-                                  {:type :entity
-                                   :index index}))
+                                (when (= (:position entity) new-position)
+                                  index))
                               (map-indexed vector (:entities state)))]
-    (cond stepped-tile? position
-          stepped-entity? stepped-entity?
-          :else new-position)))
+    (when (or stepped-entity? stepped-tile? stepped-player?)
+      {:tile stepped-entity?
+       :player stepped-player?
+       :entity-index stepped-entity?})))
 
 (defn entity-update [entity state]
   entity)
@@ -86,11 +89,10 @@
 (defn player-update [entity state input]
   (update entity :position
           (fn [position]
-            (let [movement-result (try-move state position (movement-direction input))]
-              (if-let [bumped-entity? (:index movement-result)]
-                (do (println (str "I hit somethin " (:index movement-result)))
-                    position)
-                movement-result)))))
+            (let [obstruction (try-move state position (movement-direction input))]
+              (if obstruction
+                position
+                (move position (movement-direction input)))))))
 
 (defn state-update [state input delta-time]
   (as-> state state

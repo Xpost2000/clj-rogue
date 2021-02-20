@@ -18,10 +18,10 @@
   (/ 1.0 (+ 1 (* constant distance))))
 
 ;; TODO, make these take rest arguments
-(defn vector-add [a b] (map + a b))
-(defn vector-subtract [a b] (map - a b))
-(defn vector-scale [a b] (map #(* % b) a))
-(defn vector-component-multiply [a b] (map * a b))
+(defn vector-add [a b] (mapv + a b))
+(defn vector-subtract [a b] (mapv - a b))
+(defn vector-scale [a b] (mapv #(* % b) a))
+(defn vector-component-multiply [a b] (mapv * a b))
 
 (defn contribution [base-color source to distance-function]
   (let [attenuation (attenuation 4.5 (distance-function to (:position source)))]
@@ -141,21 +141,21 @@
       (draw-entity! canvas-context camera entity light-sources))))
 
 (defn game-loop [game-state time]
-(.requestAnimationFrame js/window
-                        (fn [current-time]
-                          (game-loop
-                           (state-update game-state
-                                         @input-state
-                                         (max (/ (- current-time time) 1000) (/ 1 60))
-                                         current-time)
-                           current-time)))
-(state-draw game-canvas-context game-state @input-state time)
-(swap! input-state input/new-frame))
+  (.requestAnimationFrame js/window
+                          (fn [current-time]
+                            (game-loop
+                             (state-update game-state
+                                           @input-state
+                                           (max (/ (- current-time time) 1000) (/ 1 60))
+                                           current-time)
+                             current-time)))
+  (state-draw game-canvas-context game-state @input-state time)
+  (swap! input-state input/new-frame))
 
 (defn setup-main-game-loop! []
-(let [input-event-handlers (input/make-default-handlers input-state)]
-  (.addEventListener js/document "keydown" (:keydown input-event-handlers))
-  (.addEventListener js/document "keyup" (:keyup input-event-handlers))
-  (game-loop (make-game-state) 0)))
+  (let [input-event-handlers (input/make-default-handlers input-state)]
+    (.addEventListener js/document "keydown" (:keydown input-event-handlers))
+    (.addEventListener js/document "keyup" (:keyup input-event-handlers))
+    (game-loop (make-game-state) 0)))
 
 (defn init [] (setup-main-game-loop!))

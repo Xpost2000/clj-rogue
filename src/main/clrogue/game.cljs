@@ -23,6 +23,28 @@
 (defn vector-scale [a b] (mapv #(* % b) a))
 (defn vector-component-multiply [a b] (mapv * a b))
 
+(defn bfs-path [graph start end neighbors-fn]
+  (loop [frontier (into [] [start])
+         visited {}
+         origins {}]
+    (letfn [(trace-path []
+              (reverse (loop [path-total [] cursor end]
+                         (if-let [parent (get origins cursor)]
+                           (recur (conj path-total cursor) parent)
+                           (conj path-total start)))))]
+      (let [current-node (peek frontier)]
+        (if (= current-node end) (trace-path)
+            (when-not (empty? frontier)
+              (let [neighbors
+                    (filter (fn [neighbor]
+                              (and (not (some #(= % neighbor) frontier))
+                                   (not (get visited neighbor))))
+                            (neighbors-fn graph current-node))]
+                (recur (vec (into (drop-last frontier) neighbors))
+                       (assoc visited current-node true)
+                       (reduce #(assoc %1 %2 current-node)
+                               origins neighbors)))))))))
+
 (defn contribution [base-color source to distance-function]
   (let [attenuation (attenuation 4.5 (distance-function to (:position source)))]
     (vector-scale
@@ -57,19 +79,25 @@
     (draw-character! canvas-context camera symbol (:position entity)
                      (color-lighting (:position entity) foreground light-sources) background)))
 
+(defn tilemap-dimensions [tilemap]
+  [(count (first tilemap)) (count tilemap)])
+(defn tilemap-in-bounds? [tilemap [x y]]
+  (let [[width height] (tilemap-dimensions tilemap)]
+    (and (and (>= x 0) (< x width))
+         (and (>= y 0) (< y height)))))
 (defn draw-tilemap! [canvas-context camera tilemap light-sources]
-  (let [width (count tilemap)
-        height (count tilemap)]
+  (let [[width height] (tilemap-dimensions tilemap)]
     (doseq [y (range height)]
       (doseq [x (range width)]
         (let [character (get-in tilemap [y x] \?)]
           (draw-character! canvas-context camera character [x y]
-                           (color-lighting [x y]
-                                           (case character
-                                             \# white
-                                             \. red
-                                             black)
-                                           light-sources)
+                           (let [color (case character
+                                         \# white
+                                         \. red
+                                         black)]
+                             (if light-sources
+                               (color-lighting [x y] color light-sources)
+                               color))
                            black))))))
 
 (defn movement-direction [input]
@@ -133,8 +161,7 @@
 
 (defn state-draw [canvas-context state input ticks]
   (canvas/clear-screen! canvas-context black)
-  (let [camera [(+ (* (Math/sin (/ ticks 2000)) 10) 68)
-                (+ (* (Math/cos (/ ticks 2000)) 10) 4)]
+  (let [camera [0 0]
         light-sources (light-sources state ticks)]
     (draw-tilemap! canvas-context camera (:dungeon state) light-sources)
     (doseq [entity (into (:entities state) [(:player state)])]
@@ -159,3 +186,24 @@
     (game-loop (make-game-state) 0)))
 
 (defn init [] (setup-main-game-loop!))
+
+;; (def dungeon
+;;   [[\# \# \# \# \# \# \# \#]
+;;    [\# \. \. \. \. \. \. \#]
+;;    [\# \. \. \. \. \. \. \#]
+;;    [\# \. \. \. \. \. \. \#]
+;;    [\# \. \. \. \. \. \. \#]
+;;    [\# \. \. \. \. \. \. \#]
+;;    [\# \. \. \. \. \. \. \#]
+;;    [\# \# \# \# \# \# \# \#]])
+
+;; ;; x y format
+;; (println (bfs-path dungeon [1 1] [1 5]
+;;                    (fn [graph [x y]]
+;;                      (filter
+;;                       #(and (tilemap-in-bounds? graph %)
+;;                             (not (= (get-in graph (reverse %)) \#)))
+;;                       [[(inc x) y]
+;;                        [(dec x) y]
+;;                        [x (inc y)]
+;;                        [x (dec y)]]))))

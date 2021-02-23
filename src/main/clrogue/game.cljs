@@ -23,6 +23,7 @@
 (defn vector-add [a b] (mapv + a b))
 (defn vector-subtract [a b] (mapv - a b))
 (defn vector-scale [a b] (mapv #(* % b) a))
+(defn average [collection] (/ (reduce + 0 collection) (count collection)))
 (defn vector-component-multiply [a b] (mapv * a b))
 
 (defn contribution [base-color source to distance-function]
@@ -34,6 +35,10 @@
 (defn color-lighting [position base-color sources]
   (reduce vector-add
           (mapv #(contribution base-color % position euclidean-distance) sources)))
+
+(defn game-coordinates->screen [[camera-x camera-y] [x y]]
+  [(* (+ x camera-x) 8) (* (+ y camera-y) 16)])
+(defn screen-coordinates->game [[camera-x camera-y] [x y]] :not-done)
 
 (defn make-game-state[]
   {:player {:position [1 1] :visual {:symbol \@ :foreground white :background black}}
@@ -49,8 +54,8 @@
              [\# \# \# \# \# \# \# \#]]})
 
 ;; These are grid aligned.
-(defn draw-character! [canvas-context [camera-x camera-y] character [x y] foreground-color background-color]
-  (let [[x y] [(* (+ camera-x x) 8) (* (+ camera-y y) 16) camera-y]]
+(defn draw-character! [canvas-context camera character point foreground-color background-color]
+  (let [[x y] (game-coordinates->screen camera point)]
     (canvas/fill-rectangle! canvas-context [x y 8 16] background-color)
     (canvas/draw-text! canvas-context character [x y] "Dina" foreground-color 16)))
 
@@ -136,30 +141,46 @@
     (update state :player #(player-update % state input))))
 
 (defn light-sources [state time]
-  [{:position [(+ (* (Math/sin (/ time 1000)) 2.5) 2.5) 4]
-    :power 3.8
-    :color white
-    :ambient-strength 0.0085}
+  [;; {:position [(+ (* (Math/sin (/ time 1000)) 2.5) 2.5) 4]
+   ;;  :power 3.8
+   ;;  :color white
+   ;;  :ambient-strength 0.0085}
    {:position [6 2]
-    :power 3
+    :power (* (+ (Math/sin (/ time 1000)) 2) 3)
     :color white
     :ambient-strength 0.0085}])
 
+(defn visibility-status [average-lighting]
+  (condp <= average-lighting
+    255 :definitely-visible
+    200 :visible
+    170 :barely-visible
+    140 :blending-in-shadows
+    100 :hiding-in-shadows
+    90 :nearly-invisible
+    :in-shadows))
+
 (defn state-draw [canvas-context state input ticks]
   (canvas/clear-screen! canvas-context black)
-  (let [camera [0 0]
+  (let [camera [0 3]
         light-sources (light-sources state ticks)]
     (draw-tilemap! canvas-context camera (:dungeon state) light-sources)
     (doseq [entity (into (:entities state) [(:player state)])]
       (draw-entity! canvas-context camera entity light-sources))
-    (doseq [[x y] (graph-search/breadth-first-search
-                   (:dungeon state)
-                   (:position (:player state))
-                   (:position (first (:entities state)))
-                   (fn [graph [x y]]
-                     (filter #(tilemap-good-neighbor? graph %)
-                             [[(inc x) y] [(dec x) y] [x (inc y)] [x (dec y)]])))]
-      (canvas/fill-rectangle! canvas-context [(* x 8) (* y 16) 8 16] [0 255 0 0.3]))))
+    ;; (doseq [[x y] (graph-search/breadth-first-search
+    ;;                (:dungeon state)
+    ;;                (:position (:player state))
+    ;;                (:position (first (:entities state)))
+    ;;                (fn [graph [x y]]
+    ;;                  (filter #(tilemap-good-neighbor? graph %)
+    ;;                          [[(inc x) y] [(dec x) y] [x (inc y)] [x (dec y)]])))]
+    ;;   (canvas/fill-rectangle! canvas-context
+    ;;                           (into (game-coordinates->screen camera [x y]) [8 16])
+    ;;                           [0 255 0 128]))
+    (let [[x y] (:position (:player state))
+          light-average (average (color-lighting [x y] white light-sources))]
+      (canvas/draw-text! canvas-context (str "Lighting Avg: " light-average) [0 0] "Dina" white 16)
+      (canvas/draw-text! canvas-context (visibility-status light-average) [0 16] "Dina" white 16))))
 
 (defn game-loop [game-state time]
   (try 

@@ -5,14 +5,14 @@
 
 (defn clear-screen! [canvas-context [r g b a]]
   (set! (.-globalAlpha canvas-context) (str a))
-  (set! (.-fillStyle canvas-context) (str "rgb(" r "," g "," b ")"))
+  (set! (.-fillStyle canvas-context) (str "rgba(" r "," g "," b "," a")"))
   (.beginPath canvas-context)
   (.rect canvas-context 0 0 (width canvas-context) (height canvas-context))
   (.fill canvas-context))
 
 (defn fill-rectangle! [canvas-context [x y w h] [r g b a]]
   (set! (.-globalAlpha canvas-context) (str a))
-  (set! (.-fillStyle canvas-context) (str "rgb(" r "," g "," b ")"))
+  (set! (.-fillStyle canvas-context) (str "rgba(" r "," g "," b "," a")"))
   (.beginPath canvas-context)
   (.rect canvas-context x y w h)
   (.fill canvas-context))
@@ -21,7 +21,7 @@
   ([canvas-context [x y w h] [r g b a] thickness]
    (set! (.-lineWidth canvas-context) thickness)
    (set! (.-globalAlpha canvas-context) (str a))
-   (set! (.-strokeStyle canvas-context) (str "rgb(" r "," g "," b ")"))
+   (set! (.-strokeStyle canvas-context) (str "rgba(" r "," g "," b "," a")"))
    (.beginPath canvas-context)
    (.rect canvas-context x y w h)
    (.stroke canvas-context))
@@ -31,7 +31,7 @@
   ([canvas-context [x y x1 y1] [r g b a] thickness]
    (set! (.-lineWidth canvas-context) thickness)
    (set! (.-globalAlpha canvas-context) (str a))
-   (set! (.-strokeStyle canvas-context) (str "rgb(" r "," g "," b ")"))
+   (set! (.-strokeStyle canvas-context) (str "rgba(" r "," g "," b "," a")"))
    (.beginPath canvas-context)
    (.moveTo canvas-context x y)
    (.lineTo canvas-context x1 y1)

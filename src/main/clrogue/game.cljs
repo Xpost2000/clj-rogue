@@ -1,7 +1,9 @@
 (ns clrogue.game
   (:require [clrogue.canvas :as canvas])
-  (:require [clrogue.input :as input]))
+  (:require [clrogue.input :as input])
+  (:require [clrogue.graph-search :as graph-search]))
 
+                                        ;
 (defonce input-state (atom (input/new)))
 (defonce game-canvas-context (.getContext (.getElementById js/document "game-canvas") "2d"))
 
@@ -22,28 +24,6 @@
 (defn vector-subtract [a b] (mapv - a b))
 (defn vector-scale [a b] (mapv #(* % b) a))
 (defn vector-component-multiply [a b] (mapv * a b))
-
-(defn bfs-path [graph start end neighbors-fn]
-  (loop [frontier (into [] [start])
-         visited {}
-         origins {}]
-    (letfn [(trace-path []
-              (reverse (loop [path-total [] cursor end]
-                         (if-let [parent (get origins cursor)]
-                           (recur (conj path-total cursor) parent)
-                           (conj path-total start)))))]
-      (let [current-node (peek frontier)]
-        (if (= current-node end) (trace-path)
-            (when-not (empty? frontier)
-              (let [neighbors
-                    (filter (fn [neighbor]
-                              (and (not (some #(= % neighbor) frontier))
-                                   (not (get visited neighbor))))
-                            (neighbors-fn graph current-node))]
-                (recur (vec (into (drop-last frontier) neighbors))
-                       (assoc visited current-node true)
-                       (reduce #(assoc %1 %2 current-node)
-                               origins neighbors)))))))))
 
 (defn contribution [base-color source to distance-function]
   (let [attenuation (attenuation 4.5 (distance-function to (:position source)))]
@@ -85,6 +65,12 @@
   (let [[width height] (tilemap-dimensions tilemap)]
     (and (and (>= x 0) (< x width))
          (and (>= y 0) (< y height)))))
+(defn tilemap-get [tilemap point]
+  (get-in tilemap (reverse point)))
+(defn tilemap-good-neighbor? [tilemap point]
+  (and (tilemap-in-bounds? tilemap point)
+       (not (= (tilemap-get tilemap point) \#))))
+
 (defn draw-tilemap! [canvas-context camera tilemap light-sources]
   (let [[width height] (tilemap-dimensions tilemap)]
     (doseq [y (range height)]
@@ -151,11 +137,11 @@
 
 (defn light-sources [state time]
   [{:position [(+ (* (Math/sin (/ time 1000)) 2.5) 2.5) 4]
-    :power 1.5
+    :power 3.8
     :color white
     :ambient-strength 0.0085}
    {:position [6 2]
-    :power 1
+    :power 3
     :color white
     :ambient-strength 0.0085}])
 
@@ -165,19 +151,32 @@
         light-sources (light-sources state ticks)]
     (draw-tilemap! canvas-context camera (:dungeon state) light-sources)
     (doseq [entity (into (:entities state) [(:player state)])]
-      (draw-entity! canvas-context camera entity light-sources))))
+      (draw-entity! canvas-context camera entity light-sources))
+    (doseq [[x y] (graph-search/breadth-first-search
+                   (:dungeon state)
+                   (:position (:player state))
+                   (:position (first (:entities state)))
+                   (fn [graph [x y]]
+                     (filter #(tilemap-good-neighbor? graph %)
+                             [[(inc x) y] [(dec x) y] [x (inc y)] [x (dec y)]])))]
+      (canvas/fill-rectangle! canvas-context [(* x 8) (* y 16) 8 16] [0 255 0 0.3]))))
 
 (defn game-loop [game-state time]
-  (.requestAnimationFrame js/window
-                          (fn [current-time]
-                            (game-loop
-                             (state-update game-state
-                                           @input-state
-                                           (max (/ (- current-time time) 1000) (/ 1 60))
-                                           current-time)
-                             current-time)))
-  (state-draw game-canvas-context game-state @input-state time)
-  (swap! input-state input/new-frame))
+  (try 
+    (do
+      (.requestAnimationFrame js/window
+                              (fn [current-time]
+                                (game-loop
+                                 (state-update game-state
+                                               @input-state
+                                               (max (/ (- current-time time) 1000) (/ 1 60))
+                                               current-time)
+                                 current-time)))
+      (state-draw game-canvas-context game-state @input-state time)
+      (swap! input-state input/new-frame))
+    (catch :default exception
+      (println exception)
+      (.alert js/window exception))))
 
 (defn setup-main-game-loop! []
   (let [input-event-handlers (input/make-default-handlers input-state)]
@@ -186,24 +185,3 @@
     (game-loop (make-game-state) 0)))
 
 (defn init [] (setup-main-game-loop!))
-
-;; (def dungeon
-;;   [[\# \# \# \# \# \# \# \#]
-;;    [\# \. \. \. \. \. \. \#]
-;;    [\# \. \. \. \. \. \. \#]
-;;    [\# \. \. \. \. \. \. \#]
-;;    [\# \. \. \. \. \. \. \#]
-;;    [\# \. \. \. \. \. \. \#]
-;;    [\# \. \. \. \. \. \. \#]
-;;    [\# \# \# \# \# \# \# \#]])
-
-;; ;; x y format
-;; (println (bfs-path dungeon [1 1] [1 5]
-;;                    (fn [graph [x y]]
-;;                      (filter
-;;                       #(and (tilemap-in-bounds? graph %)
-;;                             (not (= (get-in graph (reverse %)) \#)))
-;;                       [[(inc x) y]
-;;                        [(dec x) y]
-;;                        [x (inc y)]
-;;                        [x (dec y)]]))))

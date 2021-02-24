@@ -33,7 +33,10 @@
                 rooms
                 (let [room (random-room)]
                   (if (or (any-overlaps? rooms room)
-                          (if bounds-rect (not (contained? bounds-rect (walkable-area room)))))
+                          (if bounds-rect (not (contained? (-> bounds-rect
+                                                               (update 2 dec)
+                                                               (update 3 dec))
+                                                           room))))
                     (recur rooms (inc attempt-counter))
                     (conj rooms room))))))]
     (loop [rooms []

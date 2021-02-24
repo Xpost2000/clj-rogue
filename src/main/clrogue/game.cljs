@@ -43,20 +43,23 @@
   [(* (+ x camera-x) 8) (* (+ y camera-y) 16)])
 (defn screen-coordinates->game [[camera-x camera-y] [x y]] :not-done)
 
-(defn make-entity [position visual]
-  {:position position
-   :visual visual
-   :speed 1
-   :turn-time 2
-   :wait-time 1})
+(defn make-entity
+  ([position visual speed]
+   {:position position
+    :visual visual
+    :speed speed
+    :turn-time speed
+    :wait-time 1})
+  ([position visual] (make-entity position visual 1)))
 
 
 (defn make-game-state[]
-  {:player (make-entity [1 1] {:symbol \@ :foreground white :background black})
+  {:player
+   (make-entity [1 1] {:symbol \@ :foreground white :background black} 1)
    :entities [(make-entity [2 2] {:symbol \@ :foreground green :background black})
               (make-entity [4 4] {:symbol \@ :foreground green :background black})
               (make-entity [4 5] {:symbol \@ :foreground green :background black})
-              (make-entity [4 7] {:symbol \@ :foreground green :background black})
+              (make-entity [4 7] {:symbol \@ :foreground green :background black} 6)
               (make-entity [4 8] {:symbol \@ :foreground green :background black})
               (make-entity [4 6] {:symbol \@ :foreground green :background black})
               (make-entity [4 9] {:symbol \@ :foreground green :background black})
@@ -203,26 +206,30 @@
     :player (player-turn-action actor state input)
     :entity (entity-turn-action actor state input)))
 
+(defn clean-turn-tracker [state]
+  (update state :turn-tracker
+          (fn [tracker]
+            (filterv
+             #(has-turn? (lookup-entity state %))
+             tracker))))
+
 (defn end-round [state input]
-  (as-> state state
-    (let [current-actor (first (:turn-tracker state))]
-      (if-let [action (turn-action current-actor state input)]
-		(-> state
-            (action state)
-            (update-entity current-actor entity-end-round))
-        state))
-    (update state :turn-tracker
-            (fn [tracker]
-              (filterv
-               #(has-turn? (lookup-entity state %))
-               tracker)))))
+  (reduce
+   (fn [new-state current-actor]
+     (if-let [action (turn-action current-actor new-state input)]
+	   (-> new-state
+           (action)
+           (update-entity current-actor entity-end-round))
+       (reduced state)))
+   state
+   (:turn-tracker state)))
 
 (defn state-update [state input delta-time ticks]
   (as-> state state
     (if (empty? (:turn-tracker state))
       (new-round state)
       (end-round state input))
-
+    (clean-turn-tracker state)
     (if (empty? (:turn-tracker state))
       (update-entities state entity-wait-for-turn)
       state)))
@@ -254,22 +261,20 @@
     (draw-tilemap! canvas-context camera (:dungeon state) nil)
     (doseq [entity (into (:entities state) [(:player state)])]
       (draw-entity! canvas-context camera entity light-sources))
-    (comment
-      (doseq [[row entity-handle] (map-indexed vector (:turn-tracker state))]
-        (let [real-entity (lookup-entity state entity-handle)]
-          (canvas/draw-text! canvas-context
-                             (str entity-handle " ttime: " (:turn-time real-entity) " wtime: " (:wait-time real-entity))
-                             [0 (* row 16)] "Dina" white 16)))
-      )
-    (doseq [[row entity-handle] (map-indexed vector (entity-handles state))]
-      (let [real-entity (lookup-entity state entity-handle)]
-        (canvas/draw-text! canvas-context
-                           (str entity-handle " ttime: " (:turn-time real-entity) " wtime: " (:wait-time real-entity))
-                           [400 (* row 16)] "Dina" white 16)))
-    (let [[x y] (:position (:player state))
-          light-average (average (color-lighting [x y] white light-sources))]
-      (canvas/draw-text! canvas-context (str "Lighting Avg: " light-average) [0 50] "Dina" white 16)
-      (canvas/draw-text! canvas-context (visibility-status light-average) [0 66] "Dina" white 16))
+    ;; (doseq [[row entity-handle] (map-indexed vector (:turn-tracker state))]
+    ;;   (let [real-entity (lookup-entity state entity-handle)]
+    ;;     (canvas/draw-text! canvas-context
+    ;;                        (str entity-handle " ttime: " (:turn-time real-entity) " wtime: " (:wait-time real-entity))
+    ;;                        [0 (+ (* row 16) 300)] "Dina" white 16)))
+    ;; (doseq [[row entity-handle] (map-indexed vector (entity-handles state))]
+    ;;   (let [real-entity (lookup-entity state entity-handle)]
+    ;;     (canvas/draw-text! canvas-context
+    ;;                        (str entity-handle " ttime: " (:turn-time real-entity) " wtime: " (:wait-time real-entity))
+    ;;                        [400 (+ (* row 16) 300)] "Dina" white 16)))
+    ;; (let [[x y] (:position (:player state))
+    ;;       light-average (average (color-lighting [x y] white light-sources))]
+    ;;   (canvas/draw-text! canvas-context (str "Lighting Avg: " light-average) [0 (+ 50 90)] "Dina" white 16)
+    ;;   (canvas/draw-text! canvas-context (visibility-status light-average) [0 (+ 66 90)] "Dina" white 16))
     ))
 
 (defn game-loop [game-state time]

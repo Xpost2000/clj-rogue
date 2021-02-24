@@ -18,6 +18,11 @@
        (point-in-rectangle? bounds-rectangle [(+ x1 w1) (+ y1 h1)])))
 
 (defn any-overlaps? [rooms room] (some #(any-overlap? % room) rooms))
+(defn walkable-area [[room-x room-y room-w room-h]]
+  [(inc room-x)
+   (inc room-y)
+   (- room-w 2)
+   (- room-h 2)])
 
 (defn random-room [] [(rand-int 80) (rand-int 24) (+ (rand-int 5) 5) (+ (rand-int 5) 5)])
 (defn non-intersecting-random-rooms [suggested-room-count max-attempts bounds-rect]
@@ -28,7 +33,7 @@
                 rooms
                 (let [room (random-room)]
                   (if (or (any-overlaps? rooms room)
-                          (if bounds-rect (not (contained? bounds-rect room)) false))
+                          (if bounds-rect (not (contained? bounds-rect (walkable-area room)))))
                     (recur rooms (inc attempt-counter))
                     (conj rooms room))))))]
     (loop [rooms []
@@ -68,12 +73,8 @@
 (defn paint-room [tilemap room]
   (map-index-2dv (fn [[y1 x1] tile]
                    (if (point-in-rectangle? room [x1 y1])
-                     (if (point-in-rectangle?
-                          (let [[rx ry rw rh] room]
-                            [(inc rx) (inc ry) (- rw 2) (- rh 2)])
-                          [x1 y1])
-                       \.
-                       \#)
+                     (if (point-in-rectangle? (walkable-area room) [x1 y1])
+                       \. \#)
                      tile)) tilemap))
 ;; (defn paint-line [tilemap [x1 y1] [x2 y2]]
 ;;   )

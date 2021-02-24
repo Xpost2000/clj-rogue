@@ -51,17 +51,13 @@
     :turn-time speed
     :wait-time 1})
   ([position visual] (make-entity position visual 1)))
-
+(defn make-player [position]
+  (assoc (make-entity position {:symbol \@ :foreground white :background black} 1)
+         :player? true))
 
 (defn make-game-state[]
-  {:player
-   (make-entity [1 1] {:symbol \@ :foreground white :background black} 1)
-   :entities [(make-entity [2 2] {:symbol \@ :foreground green :background black})
-              (make-entity [4 4] {:symbol \@ :foreground green :background black})
-              (make-entity [4 5] {:symbol \@ :foreground green :background black})
-              (make-entity [4 7] {:symbol \@ :foreground green :background black} 6)
-              (make-entity [4 8] {:symbol \@ :foreground green :background black})
-              (make-entity [4 6] {:symbol \@ :foreground green :background black})
+  {:player (make-player [1 1])
+   :entities [(make-entity [4 7] {:symbol \@ :foreground green :background black} 6)
               (make-entity [4 9] {:symbol \@ :foreground green :background black})
               (make-entity [4 10] {:symbol \@ :foreground green :background black})]
    :turn-tracker []
@@ -151,6 +147,7 @@
 (defn cooldown [entity] 1)
 
 (defn has-turn? [entity] (> (:turn-time entity) 0))
+(defn multiple-turns? [entity] (> (:turn-time entity) 1))
 
 (defn entity-maybe-new-round [entity]
   (letfn [(start-turn? [] (and (= (:turn-time entity) 0)
@@ -196,7 +193,6 @@
   ;; skip-action
   )
 (defn player-turn-action [actor state input]
-  ;; (println "no action")
   (let [move-direction (movement-direction input)]
     (if move-direction
       (move-action actor move-direction))))
@@ -217,9 +213,14 @@
   (reduce
    (fn [new-state current-actor]
      (if-let [action (turn-action current-actor new-state input)]
-	   (-> new-state
-           (action)
-           (update-entity current-actor entity-end-round))
+       (let [new-state (-> new-state
+                           action
+                           (update-entity current-actor entity-end-round))
+             entity (lookup-entity new-state current-actor)]
+         (cond (and (multiple-turns? entity)
+                    (not (:player? entity))) ; avoids burning all of the player's turns instantly.
+               (recur new-state current-actor)
+               :else new-state))
        (reduced state)))
    state
    (:turn-tracker state)))

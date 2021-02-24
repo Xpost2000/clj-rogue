@@ -61,7 +61,7 @@
               (make-entity [4 9] {:symbol \@ :foreground green :background black})
               (make-entity [4 10] {:symbol \@ :foreground green :background black})]
    :turn-tracker []
-   :dungeon (dungeon-generation/paint-rooms-and-edges (dungeon-generation/tunneling 4 [0 0 50 30]))})
+   :dungeon (dungeon-generation/paint-rooms-and-edges (dungeon-generation/tunneling 8 [0 0 50 30]))})
 
 ;; These are grid aligned.
 (defn draw-character! [canvas-context camera character point foreground-color background-color]
@@ -194,7 +194,10 @@
   )
 (defn player-turn-action [actor state input]
   (let [move-direction (movement-direction input)]
-    (cond move-direction (move-action actor move-direction)
+    (cond move-direction
+          (if (try-move state (:position actor) move-direction)
+            wait-action
+            (move-action actor move-direction))
           (input/event-keydown input ".") wait-action)))
 
 (defn turn-action [actor state input]
@@ -209,13 +212,16 @@
              #(has-turn? (lookup-entity state %))
              tracker))))
 
+(defn run-round [state action actor]
+  (-> state
+      action
+      (update-entity actor entity-end-round)))
+
 (defn end-round [state input]
   (reduce
    (fn [new-state current-actor]
      (if-let [action (turn-action current-actor new-state input)]
-       (let [new-state (-> new-state
-                           action
-                           (update-entity current-actor entity-end-round))
+       (let [new-state (run-round new-state action current-actor)
              entity (lookup-entity new-state current-actor)]
          (cond (and (multiple-turns? entity)
                     (not (:player? entity))) ; avoids burning all of the player's turns instantly.
@@ -225,12 +231,31 @@
    state
    (:turn-tracker state)))
 
+(defn message-color [message]
+  (case (:type message)
+    :informative white
+    :combat red
+    [0 255 255 255]))
+(defn message [state message type]
+  (update state :message-log #(conj % {:type type :text message :time 1.5})))
+(def informative-message #(message %1 %2 :informative))
+
+(defn update-messages [state delta-time]
+  (update state :message-log
+          (fn [message-log]
+            (filterv #(> (:time %) 0.0)
+                     (map #(update % :time - delta-time)
+                          message-log)))))
+
 (defn state-update [state input delta-time ticks]
   (as-> state state
     (if (empty? (:turn-tracker state))
-      (new-round state)
+      (-> state
+          new-round
+          (informative-message "New round started."))
       (end-round state input))
     (clean-turn-tracker state)
+    (update-messages state delta-time)
     (if (empty? (:turn-tracker state))
       (update-entities state entity-wait-for-turn)
       state)))
@@ -262,21 +287,14 @@
     (draw-tilemap! canvas-context camera (:dungeon state) nil)
     (doseq [entity (into (:entities state) [(:player state)])]
       (draw-entity! canvas-context camera entity light-sources))
-    ;; (doseq [[row entity-handle] (map-indexed vector (:turn-tracker state))]
-    ;;   (let [real-entity (lookup-entity state entity-handle)]
-    ;;     (canvas/draw-text! canvas-context
-    ;;                        (str entity-handle " ttime: " (:turn-time real-entity) " wtime: " (:wait-time real-entity))
-    ;;                        [0 (+ (* row 16) 300)] "Dina" white 16)))
-    ;; (doseq [[row entity-handle] (map-indexed vector (entity-handles state))]
-    ;;   (let [real-entity (lookup-entity state entity-handle)]
-    ;;     (canvas/draw-text! canvas-context
-    ;;                        (str entity-handle " ttime: " (:turn-time real-entity) " wtime: " (:wait-time real-entity))
-    ;;                        [400 (+ (* row 16) 300)] "Dina" white 16)))
-    ;; (let [[x y] (:position (:player state))
-    ;;       light-average (average (color-lighting [x y] white light-sources))]
-    ;;   (canvas/draw-text! canvas-context (str "Lighting Avg: " light-average) [0 (+ 50 90)] "Dina" white 16)
-    ;;   (canvas/draw-text! canvas-context (visibility-status light-average) [0 (+ 66 90)] "Dina" white 16))
-    ))
+    (doseq [[row message] (map-indexed vector (:message-log state))]
+      (canvas/draw-text! canvas-context
+                         (:text message)
+                         [0 (* row 16)]
+                         "Dina"
+                         (assoc (message-color message)
+                                3 (* 255 (/ (:time message) 1.0)))
+                         16))))
 
 (defn game-loop [game-state time]
   (try 

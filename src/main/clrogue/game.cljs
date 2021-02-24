@@ -143,6 +143,22 @@
 (defn update-entities [state f]
   (reduce #(update-entity %1 %2 f) state (entity-handles state)))
 
+(defn message-color [message]
+  (case (:type message)
+    :informative white
+    :combat red
+    [0 255 255 255]))
+(defn message [state message type]
+  (update state :message-log #(conj % {:type type :text message :time 3.5})))
+(def informative-message #(message %1 %2 :informative))
+
+(defn update-messages [state delta-time]
+  (update state :message-log
+          (fn [message-log]
+            (filterv #(> (:time %) 0.0)
+                     (map #(update % :time - delta-time)
+                          message-log)))))
+
 (defn turns [entity] (:speed entity))
 (defn cooldown [entity] 1)
 
@@ -183,11 +199,15 @@
                (entity-handles state))))))
 
 (def wait-action identity)
-(defn move-action [actor movement-direction]
+(defn move-action [actor move-direction]
   (fn [state]
-    (update-entity state
-                   actor
-                   #(move-entity % state movement-direction))))
+    (update-entity state actor #(move-entity % state move-direction))))
+(defn player-move-action [actor move-direction]
+  (fn [state]
+    (let [entity (lookup-entity state actor)]
+      (if (try-move state (:position entity) move-direction)
+       	(informative-message state "You bumped into a wall.")
+        (update-entity state actor #(move-entity % state move-direction))))))
 (defn entity-turn-action [actor state input]
   (move-action actor (rand-nth [:up :down :left :right]))
   ;; wait-action
@@ -195,9 +215,8 @@
 (defn player-turn-action [actor state input]
   (let [move-direction (movement-direction input)]
     (cond move-direction
-          (if (try-move state (:position actor) move-direction)
-            wait-action
-            (move-action actor move-direction))
+          (player-move-action actor move-direction)
+          
           (input/event-keydown input ".") wait-action)))
 
 (defn turn-action [actor state input]
@@ -231,28 +250,10 @@
    state
    (:turn-tracker state)))
 
-(defn message-color [message]
-  (case (:type message)
-    :informative white
-    :combat red
-    [0 255 255 255]))
-(defn message [state message type]
-  (update state :message-log #(conj % {:type type :text message :time 1.5})))
-(def informative-message #(message %1 %2 :informative))
-
-(defn update-messages [state delta-time]
-  (update state :message-log
-          (fn [message-log]
-            (filterv #(> (:time %) 0.0)
-                     (map #(update % :time - delta-time)
-                          message-log)))))
-
 (defn state-update [state input delta-time ticks]
   (as-> state state
     (if (empty? (:turn-tracker state))
-      (-> state
-          new-round
-          (informative-message "New round started."))
+      (new-round state)
       (end-round state input))
     (clean-turn-tracker state)
     (update-messages state delta-time)

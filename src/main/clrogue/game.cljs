@@ -54,7 +54,13 @@
 (defn make-game-state[]
   {:player (make-entity [1 1] {:symbol \@ :foreground white :background black})
    :entities [(make-entity [2 2] {:symbol \@ :foreground green :background black})
-              (make-entity [4 4] {:symbol \@ :foreground green :background black})]
+              (make-entity [4 4] {:symbol \@ :foreground green :background black})
+              (make-entity [4 5] {:symbol \@ :foreground green :background black})
+              (make-entity [4 7] {:symbol \@ :foreground green :background black})
+              (make-entity [4 8] {:symbol \@ :foreground green :background black})
+              (make-entity [4 6] {:symbol \@ :foreground green :background black})
+              (make-entity [4 9] {:symbol \@ :foreground green :background black})
+              (make-entity [4 10] {:symbol \@ :foreground green :background black})]
    :turn-tracker []
    :dungeon (dungeon-generation/paint-rooms-and-edges (dungeon-generation/tunneling 4 [0 0 50 30]))})
 
@@ -76,7 +82,7 @@
         (let [character (tilemap/at tilemap [x y])
               base-color (case character
                            \# white
-                           \. red
+                           \. (vector-scale white 0.7)
                            black)
               color (color-lighting [x y] base-color light-sources)]
           (when-not (< (average color)
@@ -112,7 +118,6 @@
 (defn entities [state]
   (map #(lookup-entity state %) (entity-handles state)))
 
-;; move to have handles to things to make things more convenient again.
 (defn try-move [state position direction]
   (let [new-position (move position direction)
         stepped-tile? (= (tilemap/at (:dungeon state) new-position) \# \#)        
@@ -129,9 +134,6 @@
           (fn [position]
             (let [obstruction (try-move state position direction)]
               (if obstruction position (move position direction))))))
-
-(defn player-update [entity state input]
-  (move-entity entity state (movement-direction input)))
 
 (defn update-entity [state handle f]
   (case (:type handle)
@@ -156,7 +158,7 @@
           (assoc :wait-time (cooldown entity)))
       entity)))
 
-(defn entity-wait-until-turn [entity]
+(defn entity-wait-for-turn [entity]
   (if (and (> (:wait-time entity) 0)
            (= (:turn-time entity) 0))
     (update entity :wait-time dec)
@@ -180,12 +182,35 @@
                tracker
                (entity-handles state))))))
 
-(defn turn-tracker-run [state]
-  state)
+(def skip-action identity)
+(defn move-action [actor movement-direction]
+  (fn [state]
+    (update-entity state
+                   actor
+                   #(move-entity % state movement-direction))))
+(defn entity-turn-action [actor state input]
+  (move-action actor (rand-nth [:up :down :left :right]))
+  ;; skip-action
+  )
+(defn player-turn-action [actor state input]
+  ;; (println "no action")
+  (let [move-direction (movement-direction input)]
+    (if move-direction
+      (move-action actor move-direction))))
 
-(defn end-round [state]
+(defn turn-action [actor state input]
+  (case (:type actor)
+    :player (player-turn-action actor state input)
+    :entity (entity-turn-action actor state input)))
+
+(defn end-round [state input]
   (as-> state state
-    (update-entity state (first (:turn-tracker state)) entity-end-round)
+    (let [current-actor (first (:turn-tracker state))]
+      (if-let [action (turn-action current-actor state input)]
+		(-> state
+            (action state)
+            (update-entity current-actor entity-end-round))
+        state))
     (update state :turn-tracker
             (fn [tracker]
               (filterv
@@ -196,20 +221,11 @@
   (as-> state state
     (if (empty? (:turn-tracker state))
       (new-round state)
-      state)
-    ;; (turn-tracker-run state)
-
-    (if (input/event-keydown input "w")
-      (end-round state)
-      state)
+      (end-round state input))
 
     (if (empty? (:turn-tracker state))
-      (update-entities state entity-wait-until-turn)
-      state)
-    ;; (end-round state)
-    
-    ;; (update state :player #(player-update % state input))
-    ))
+      (update-entities state entity-wait-for-turn)
+      state)))
 
 (defn light-sources [state time]
   [;; {:position [(+ (* (Math/sin (/ time 1000)) 2.5) 2.5) 4]
@@ -235,34 +251,25 @@
   (canvas/clear-screen! canvas-context black)
   (let [camera [0 3]
         light-sources (light-sources state ticks)]
-    ;; (println (:dungeon state))
     (draw-tilemap! canvas-context camera (:dungeon state) nil)
     (doseq [entity (into (:entities state) [(:player state)])]
       (draw-entity! canvas-context camera entity light-sources))
-    ;; (doseq [[x y] (graph-search/breadth-first-search
-    ;;                (:dungeon state)
-    ;;                (:position (:player state))
-    ;;                (:position (first (:entities state)))
-    ;;                (fn [graph [x y]]
-    ;;                  (filter #(tilemap-good-neighbor? graph %)
-    ;;                          [[(inc x) y] [(dec x) y] [x (inc y)] [x (dec y)]])))]
-    ;;   (canvas/fill-rectangle! canvas-context
-    ;;                           (into (game-coordinates->screen camera [x y]) [8 16])
-    ;;                           [0 255 0 128]))
-    (doseq [[row entity-handle] (map-indexed vector (:turn-tracker state))]
-      (let [real-entity (lookup-entity state entity-handle)]
-        (canvas/draw-text! canvas-context
-                           (str entity-handle " ttime: " (:turn-time real-entity) " wtime: " (:wait-time real-entity))
-                           [0 (* row 16)] "Dina" white 16)))
+    (comment
+      (doseq [[row entity-handle] (map-indexed vector (:turn-tracker state))]
+        (let [real-entity (lookup-entity state entity-handle)]
+          (canvas/draw-text! canvas-context
+                             (str entity-handle " ttime: " (:turn-time real-entity) " wtime: " (:wait-time real-entity))
+                             [0 (* row 16)] "Dina" white 16)))
+      )
     (doseq [[row entity-handle] (map-indexed vector (entity-handles state))]
       (let [real-entity (lookup-entity state entity-handle)]
         (canvas/draw-text! canvas-context
                            (str entity-handle " ttime: " (:turn-time real-entity) " wtime: " (:wait-time real-entity))
                            [400 (* row 16)] "Dina" white 16)))
-    ;; (let [[x y] (:position (:player state))
-    ;;       light-average (average (color-lighting [x y] white light-sources))]
-    ;;   (canvas/draw-text! canvas-context (str "Lighting Avg: " light-average) [0 0] "Dina" white 16)
-    ;;   (canvas/draw-text! canvas-context (visibility-status light-average) [0 16] "Dina" white 16))
+    (let [[x y] (:position (:player state))
+          light-average (average (color-lighting [x y] white light-sources))]
+      (canvas/draw-text! canvas-context (str "Lighting Avg: " light-average) [0 50] "Dina" white 16)
+      (canvas/draw-text! canvas-context (visibility-status light-average) [0 66] "Dina" white 16))
     ))
 
 (defn game-loop [game-state time]

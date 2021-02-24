@@ -57,7 +57,7 @@
 
 (defn make-game-state[]
   {:player (make-player [1 1])
-   :entities [(make-entity [4 7] {:symbol \@ :foreground green :background black} 6)
+   :entities [(make-entity [4 7] {:symbol \@ :foreground green :background black} 2)
               (make-entity [4 9] {:symbol \@ :foreground green :background black})
               (make-entity [4 10] {:symbol \@ :foreground green :background black})]
    :turn-tracker []
@@ -182,7 +182,7 @@
                tracker
                (entity-handles state))))))
 
-(def skip-action identity)
+(def wait-action identity)
 (defn move-action [actor movement-direction]
   (fn [state]
     (update-entity state
@@ -190,12 +190,12 @@
                    #(move-entity % state movement-direction))))
 (defn entity-turn-action [actor state input]
   (move-action actor (rand-nth [:up :down :left :right]))
-  ;; skip-action
+  ;; wait-action
   )
 (defn player-turn-action [actor state input]
   (let [move-direction (movement-direction input)]
-    (if move-direction
-      (move-action actor move-direction))))
+    (cond move-direction (move-action actor move-direction)
+          (input/event-keydown input ".") wait-action)))
 
 (defn turn-action [actor state input]
   (case (:type actor)

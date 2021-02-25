@@ -219,15 +219,43 @@
         (as-> state state
           (informative-message state (str (:name actor-entity) " does " random-damage " dmg to " (:name other-actor-entity)))
           (update-entity state other-actor #(damage-entity % state random-damage)))))))
+
+;; I know I have pathfinding but it's expensive to run so this is going to be an idiot bump
+;; also only four direction movement
+(defn chase-range? [entity target-position]
+  (<= (euclidean-distance (:position entity) target-position) 5))
+(defn melee-attack-range? [entity target-position]
+  (<= (euclidean-distance (:position entity) target-position) 1.414213562))
+(defn direction-to-move-to [state start-position end-position]
+  (let [direction-vector (vector-subtract end-position start-position)
+        direction (cond (> (first direction-vector) 0) :right
+                        (< (first direction-vector) 0) :left
+                        (> (second direction-vector) 0) :down
+                        (< (second direction-vector) 0) :up)]
+    direction))
 (defn entity-turn-action [actor state input]
-  ;; (move-action actor (rand-nth [:up :down :left :right]))
-  wait-action
-  )
+  (let [self-entity (lookup-entity state actor)
+        movement-direction (if (chase-range? self-entity (:position (:player state)))
+                             (direction-to-move-to state (:position self-entity) (:position (:player state)))
+                             (rand-nth [:up :down :left :right]))
+        random-direction (rand-nth [:up :down :left :right])]
+    (if-let [obstacle (try-move state (:position self-entity) movement-direction)]
+      (cond (and (:entity obstacle)
+                 (= (:type (:entity obstacle)) :player))
+            (let [obstacle-entity (lookup-entity state (:entity obstacle))]
+              (if (and (melee-attack-range? self-entity
+                                            (:position (:player state)))
+                       (alive? (:player state)))
+                (player-melee-combat-action actor (:entity obstacle))
+                (move-action actor random-direction)))
+            :else
+            (move-action actor random-direction))
+      (move-action actor movement-direction))))
 (defn player-turn-action [actor state input]
   (let [move-direction (movement-direction input)
-        entity (lookup-entity state actor)]
+        self-entity (lookup-entity state actor)]
     (cond move-direction
-          (if-let [obstacle (try-move state (:position entity) move-direction)]
+          (if-let [obstacle (try-move state (:position self-entity) move-direction)]
             (if-let [other-entity (:entity obstacle)]
               (player-melee-combat-action actor other-entity)
               (player-move-action actor move-direction))
@@ -280,16 +308,20 @@
    state
    (:turn-tracker state)))
 
+(defn player-alive? [state] (alive? (:player state)))
 (defn state-update [state input delta-time ticks]
-  (as-> state state
-    (if (empty? (:turn-tracker state))
-      (new-round state)
-      (end-round state input))
-    (clean-turn-tracker state)
-    (update-messages state delta-time)
-    (if (empty? (:turn-tracker state))
-      (update-entities state entity-wait-for-turn)
-      state)))
+  (if (player-alive? state)
+    (as-> state state
+      (if (empty? (:turn-tracker state))
+        (new-round state)
+        (end-round state input))
+      (clean-turn-tracker state)
+      (update-messages state delta-time)
+      (if (empty? (:turn-tracker state))
+        (update-entities state entity-wait-for-turn)
+        state))
+    (as-> state state
+      (update-messages state delta-time))))
 
 (defn light-sources [state time]
   [;; {:position [(+ (* (Math/sin (/ time 1000)) 2.5) 2.5) 4]
@@ -312,43 +344,57 @@
     :in-shadows))
 
 (defn state-ui-draw [canvas-context state input ticks]
-  (doseq [[row message] (map-indexed vector (:message-log state))]
-    (canvas/draw-text! canvas-context
-                       (:text message)
-                       [0 (* row 16)]
-                       "Dina"
-                       (assoc (message-color message)
-                              3 (* 255 (/ (:time message) 1.0)))
-                       16))
-  (let [light-sources (light-sources state ticks)
-        player-entity (:player state)]
-    (canvas/draw-text! canvas-context
-                       (str "HP:" (:health player-entity))
-                       [380 0]
-                       "Dina"
-                       (let [health-percent (health-percent player-entity)]
-                         (cond
-                           (<= health-percent 0.25) red
-                           (<= health-percent 0.5) [255 255 0 255]
-                           (<= health-percent 0.75) [0 100 255 255]
-                           :else green))
-                       16)
-    (canvas/draw-text! canvas-context
-                       (case (visibility-status (average (color-lighting (:position player-entity)
-                                                                         white
-                                                                         light-sources)))
-	                     :definitely-visible "VISIBLE!"                     
-                         :visible "VISIBLE"
-                         :barely-visible "BARELY VISIBLE"
-                         :blending-in-shadows "HIDDEN?"
-                         :hiding-in-shadows "HIDDEN"
-                         :nearly-invisible "INVISIBLE"
-                         :in-shadows "SHADOW!"
-                         "SAFE?")
-                       [380 16]
-                       "Dina"
-                       white
-                       16)))
+  (if (player-alive? state)
+    (do
+      (doseq [[row message] (map-indexed vector (:message-log state))]
+        (canvas/draw-text! canvas-context
+                           (:text message)
+                           [0 (* row 16)]
+                           "Dina"
+                           (assoc (message-color message)
+                                  3 (* 255 (/ (:time message) 1.0)))
+                           16))
+      (let [light-sources (light-sources state ticks)
+            player-entity (:player state)]
+        (canvas/draw-text! canvas-context
+                           (str "HP:" (:health player-entity))
+                           [380 0]
+                           "Dina"
+                           (let [health-percent (health-percent player-entity)]
+                             (cond
+                               (<= health-percent 0.25) red
+                               (<= health-percent 0.5) [255 255 0 255]
+                               (<= health-percent 0.75) [0 100 255 255]
+                               :else green))
+                           16)
+        (canvas/draw-text! canvas-context
+                           (case (visibility-status (average (color-lighting (:position player-entity)
+                                                                             white
+                                                                             light-sources)))
+	                         :definitely-visible "VISIBLE!"                     
+                             :visible "VISIBLE"
+                             :barely-visible "BARELY VISIBLE"
+                             :blending-in-shadows "HIDDEN?"
+                             :hiding-in-shadows "HIDDEN"
+                             :nearly-invisible "INVISIBLE"
+                             :in-shadows "SHADOW!"
+                             "SAFE?")
+                           [380 16]
+                           "Dina"
+                           white
+                           16)))
+    (do
+      (canvas/fill-rectangle! canvas-context [0
+                                              0
+                                              (canvas/width canvas-context)
+                                              (canvas/height canvas-context)]
+                              (assoc red 3 128))
+      (canvas/draw-text! canvas-context
+                         "DEATH"
+                         [300 200]
+                         "Dina"
+                         white
+                         64))))
 
 (defn state-draw [canvas-context state input ticks]
   (canvas/clear-screen! canvas-context black)

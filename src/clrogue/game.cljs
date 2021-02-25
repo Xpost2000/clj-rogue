@@ -42,7 +42,8 @@
 
 (defn make-entity
   ([position visual speed]
-   {:position position
+   {:name "guy"
+    :position position
     :visual visual
     :speed speed
     :turn-time speed
@@ -50,7 +51,8 @@
   ([position visual] (make-entity position visual 1)))
 (defn make-player [position]
   (assoc (make-entity position {:symbol \@ :foreground white :background black} 1)
-         :player? true))
+         :player? true
+         :name "hero"))
 
 (defn make-game-state[]
   {:player (make-player [1 1])
@@ -199,21 +201,35 @@
 (defn move-action [actor move-direction]
   (fn [state]
     (update-entity state actor #(move-entity % state move-direction))))
+;; player versions of actions have additional message logging.
+;; I could also just send the messages to the entities themselves I guess...
+;; Or make this a multimethod? idk
 (defn player-move-action [actor move-direction]
   (fn [state]
     (let [entity (lookup-entity state actor)]
-      (if (try-move state (:position entity) move-direction)
-       	(informative-message state "You bumped into a wall.")
+      (if-let [obstacle (try-move state (:position entity) move-direction)]
+       	(informative-message state
+                             (cond (:tile obstacle) "You bumped into a wall."
+                                   (:entity obstacle) "You bumped into a thing."))
         (update-entity state actor #(move-entity % state move-direction))))))
+(defn player-melee-combat-action [actor other-actor]
+  (fn [state]
+    (informative-message state (str "Might begin combat! between "
+                                    (:name (lookup-entity state actor)) " and "
+                                    (:name (lookup-entity state other-actor))))))
 (defn entity-turn-action [actor state input]
-  (move-action actor (rand-nth [:up :down :left :right]))
-  ;; wait-action
+  ;; (move-action actor (rand-nth [:up :down :left :right]))
+  wait-action
   )
 (defn player-turn-action [actor state input]
-  (let [move-direction (movement-direction input)]
+  (let [move-direction (movement-direction input)
+        entity (lookup-entity state actor)]
     (cond move-direction
-          (player-move-action actor move-direction)
-          
+          (if-let [obstacle (try-move state (:position entity) move-direction)]
+            (if-let [other-entity (:entity obstacle)]
+              (player-melee-combat-action actor other-entity)
+              (player-move-action actor move-direction))
+            (player-move-action actor move-direction))
           (input/event-keydown input ".") wait-action)))
 
 (defn turn-action [actor state input]

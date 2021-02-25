@@ -9,18 +9,23 @@
         font-family: Dina;
         src: url('./font/dina.ttf');
     }
+    * {
+        margin: 0;
+        padding: 0;
+    }
     body {
+        height: 100%;
         font-family: Dina;
         background-color: black;
         color: white;
     }
+    #canvas-holder {}
     #game-canvas {
+        display: inline-block;
     }
   </style>
   <body>
-    <div id="root"></div>
-    <div id="canvas-holder"
-         style="text-align: center; width: 100%;">
+    <div id="canvas-holder" style="text-align: center; width: 100%;">
     <canvas id="game-canvas" width="800" height="600">
     </canvas>
     </div>

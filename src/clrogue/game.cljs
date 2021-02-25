@@ -69,7 +69,7 @@
    :turn-tracker []
    :previous-game-time 0
    :game-time 0
-   :dungeon (dungeon-generation/paint-rooms-and-edges (dungeon-generation/tunneling 15 [0 0 80 30]))})
+   :dungeon (dungeon-generation/paint-rooms-and-edges (dungeon-generation/tunneling 4 [0 0 80 30]))})
 
 ;; These are grid aligned.
 (defn draw-character! [canvas-context camera character point foreground-color background-color]
@@ -386,26 +386,29 @@
                        white
                        16)))
 
-(defn state-draw [canvas-context state input ticks]
-  (if (player-alive? state)
-    (when-not (= (:game-time state) (:previous-game-time state)) 
-      (canvas/clear-screen! canvas-context black)
-      (let [camera [0 3]
-            light-sources (light-sources state ticks)]
-        (draw-tilemap! canvas-context camera (:dungeon state) light-sources)
-        (doseq [entity (into (:entities state) [(:player state)])]
-          (draw-entity! canvas-context camera entity light-sources)))
-      (state-ui-draw canvas-context state input ticks))
-    (do (canvas/clear-screen! canvas-context black)
-        (canvas/draw-text! canvas-context
-                           "DEATH"
-                           [300 200]
-                           "Dina"
-                           white
-                           64)
-        (canvas/draw-text! canvas-context
-                           "Refresh for another run!"
-                           [200 264]
-                           "Dina"
-                           white
-                           32))))
+(defn state-draw
+  ([canvas-context state input ticks] (state-draw canvas-context state input ticks false))
+  ([canvas-context state input ticks forced]
+   (if (player-alive? state)
+     (when (or forced (not (= (:game-time state) (:previous-game-time state)))) 
+       (canvas/fill-rectangle! canvas-context [0 0 800 600] black)
+       (let [camera [0 3]
+             light-sources (light-sources state ticks)]
+         (draw-tilemap! canvas-context camera (:dungeon state) light-sources)
+         (doseq [entity (into (:entities state) [(:player state)])]
+           (draw-entity! canvas-context camera entity light-sources)))
+       (state-ui-draw canvas-context state input ticks))
+     (do
+       (canvas/fill-rectangle! canvas-context [0 0 800 600] black)
+       (canvas/draw-text! canvas-context
+                          "DEATH"
+                          [300 200]
+                          "Dina"
+                          white
+                          64)
+       (canvas/draw-text! canvas-context
+                          "Refresh for another run!"
+                          [200 264]
+                          "Dina"
+                          white
+                          32)))))

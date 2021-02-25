@@ -11,16 +11,25 @@
   (some #(= % (key-event :keyup keycode)) (:events input)))
 
 (defn shift-down? [input] (event-keydown input "Shift"))
+(defn prevent-default [event]
+  (if (some #(= % (.-key event))
+            ["ArrowUp"
+             "ArrowDown"
+             "ArrowLeft"
+             "ArrowRight"
+             " "
+             "/" "?"])
+    (.preventDefault event)))
 (defn make-default-keydown-handler [input-state]
   (fn [event]
-    (.preventDefault event)
+    (prevent-default event)
     (swap! input-state
            (fn [last]
              (let [events (:events last)]
                {:events (conj events (key-event :keydown (.-key event)))})))))
 (defn make-default-keyup-handler [input-state]
   (fn [event]
-    (.preventDefault event)
+    (prevent-default event)
     (swap! input-state
            (fn [last]
              (let [events (:events last)]

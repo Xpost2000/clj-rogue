@@ -67,7 +67,9 @@
               (make-entity [4 9] {:symbol \@ :foreground green :background black})
               (make-entity [4 10] {:symbol \@ :foreground green :background black})]
    :turn-tracker []
-   :dungeon (dungeon-generation/paint-rooms-and-edges (dungeon-generation/tunneling 8 [0 0 50 30]))})
+   :previous-game-time 0
+   :game-time 0
+   :dungeon (dungeon-generation/paint-rooms-and-edges (dungeon-generation/tunneling 15 [0 0 80 30]))})
 
 ;; These are grid aligned.
 (defn draw-character! [canvas-context camera character point foreground-color background-color]
@@ -292,7 +294,8 @@
                      (conj turn-tracker-content entity-handle)
                      turn-tracker-content)))
                tracker
-               (entity-handles state))))))
+               (entity-handles state))))
+    (update state :game-time inc)))
 
 (defn end-round [state input]
   (reduce
@@ -312,6 +315,7 @@
 (defn state-update [state input delta-time ticks]
   (if (player-alive? state)
     (as-> state state
+      (assoc state :previous-game-time (:game-time state))
       (if (empty? (:turn-tracker state))
         (new-round state)
         (end-round state input))
@@ -329,7 +333,7 @@
    ;;  :color white
    ;;  :ambient-strength 0.0085}
    {:position [10 10]
-    :power (* (+ (Math/sin (/ time 1000)) 3) 10)
+    :power (* (+ (Math/sin (/ (:game-time state) 10)) 3) 99)
     :color white
     :ambient-strength 0.0085}])
 
@@ -344,63 +348,64 @@
     :in-shadows))
 
 (defn state-ui-draw [canvas-context state input ticks]
-  (if (player-alive? state)
-    (do
-      (doseq [[row message] (map-indexed vector (:message-log state))]
-        (canvas/draw-text! canvas-context
-                           (:text message)
-                           [0 (* row 16)]
-                           "Dina"
-                           (assoc (message-color message)
-                                  3 (* 255 (/ (:time message) 1.0)))
-                           16))
-      (let [light-sources (light-sources state ticks)
-            player-entity (:player state)]
-        (canvas/draw-text! canvas-context
-                           (str "HP:" (:health player-entity))
-                           [380 0]
-                           "Dina"
-                           (let [health-percent (health-percent player-entity)]
-                             (cond
-                               (<= health-percent 0.25) red
-                               (<= health-percent 0.5) [255 255 0 255]
-                               (<= health-percent 0.75) [0 100 255 255]
-                               :else green))
-                           16)
-        (canvas/draw-text! canvas-context
-                           (case (visibility-status (average (color-lighting (:position player-entity)
-                                                                             white
-                                                                             light-sources)))
-	                         :definitely-visible "VISIBLE!"                     
-                             :visible "VISIBLE"
-                             :barely-visible "BARELY VISIBLE"
-                             :blending-in-shadows "HIDDEN?"
-                             :hiding-in-shadows "HIDDEN"
-                             :nearly-invisible "INVISIBLE"
-                             :in-shadows "SHADOW!"
-                             "SAFE?")
-                           [380 16]
-                           "Dina"
-                           white
-                           16)))
-    (do
-      (canvas/fill-rectangle! canvas-context [0
-                                              0
-                                              (canvas/width canvas-context)
-                                              (canvas/height canvas-context)]
-                              (assoc red 3 128))
-      (canvas/draw-text! canvas-context
-                         "DEATH"
-                         [300 200]
-                         "Dina"
-                         white
-                         64))))
+  (doseq [[row message] (map-indexed vector (:message-log state))]
+    (canvas/draw-text! canvas-context
+                       (:text message)
+                       [0 (* row 16)]
+                       "Dina"
+                       (assoc (message-color message)
+                              3 (* 255 (/ (:time message) 1.0)))
+                       16))
+  (let [light-sources (light-sources state ticks)
+        player-entity (:player state)]
+    (canvas/draw-text! canvas-context
+                       (str "HP:" (:health player-entity))
+                       [380 0]
+                       "Dina"
+                       (let [health-percent (health-percent player-entity)]
+                         (cond
+                           (<= health-percent 0.25) red
+                           (<= health-percent 0.5) [255 255 0 255]
+                           (<= health-percent 0.75) [0 100 255 255]
+                           :else green))
+                       16)
+    (canvas/draw-text! canvas-context
+                       (case (visibility-status (average (color-lighting (:position player-entity)
+                                                                         white
+                                                                         light-sources)))
+	                     :definitely-visible "VISIBLE!"                     
+                         :visible "VISIBLE"
+                         :barely-visible "BARELY VISIBLE"
+                         :blending-in-shadows "HIDDEN?"
+                         :hiding-in-shadows "HIDDEN"
+                         :nearly-invisible "INVISIBLE"
+                         :in-shadows "SHADOW!"
+                         "SAFE?")
+                       [380 16]
+                       "Dina"
+                       white
+                       16)))
 
 (defn state-draw [canvas-context state input ticks]
-  (canvas/clear-screen! canvas-context black)
-  (let [camera [0 3]
-        light-sources (light-sources state ticks)]
-    (draw-tilemap! canvas-context camera (:dungeon state) light-sources)
-    (doseq [entity (into (:entities state) [(:player state)])]
-      (draw-entity! canvas-context camera entity light-sources))
-    (state-ui-draw canvas-context state input ticks)))
+  (if (player-alive? state)
+    (when-not (= (:game-time state) (:previous-game-time state)) 
+      (canvas/clear-screen! canvas-context black)
+      (let [camera [0 3]
+            light-sources (light-sources state ticks)]
+        (draw-tilemap! canvas-context camera (:dungeon state) light-sources)
+        (doseq [entity (into (:entities state) [(:player state)])]
+          (draw-entity! canvas-context camera entity light-sources)))
+      (state-ui-draw canvas-context state input ticks))
+    (do (canvas/clear-screen! canvas-context black)
+        (canvas/draw-text! canvas-context
+                           "DEATH"
+                           [300 200]
+                           "Dina"
+                           white
+                           64)
+        (canvas/draw-text! canvas-context
+                           "Refresh for another run!"
+                           [200 264]
+                           "Dina"
+                           white
+                           32))))

@@ -40,9 +40,12 @@
   [(* (+ x camera-x) 8) (* (+ y camera-y) 16)])
 (defn screen-coordinates->game [[camera-x camera-y] [x y]] :not-done)
 
+(defn alive? [entity]
+  (> (:health entity) 0))
 (defn make-entity
   ([position visual speed]
    {:name "guy"
+    :health 20
     :position position
     :visual visual
     :speed speed
@@ -71,7 +74,9 @@
 (defn draw-entity! [canvas-context camera entity light-sources]
   (let [{:keys [symbol foreground background]} (:visual entity)]
     (draw-character! canvas-context camera symbol (:position entity)
-                     (color-lighting (:position entity) foreground light-sources) background)))
+                     (color-lighting (:position entity)
+                                     (if (alive? entity) foreground [40 40 40 255])
+                                     light-sources) background)))
 
 (defn draw-tilemap! [canvas-context camera tilemap light-sources]
   (let [[width height] (tilemap/dimensions tilemap)]
@@ -120,13 +125,16 @@
   (let [new-position (move position direction)
         stepped-tile? (= (tilemap/at (:dungeon state) new-position) \# \#)        
         stepped-entity? (some (fn [entity-handle]
-                                (when (= (:position (lookup-entity state entity-handle)) new-position)
-                                  entity-handle))
+                                (let [entity (lookup-entity state entity-handle)]
+                                  (when (and (= (:position entity) new-position) (alive? entity))
+                                    entity-handle)))
                               (entity-handles state))]
     (when (and direction (or stepped-entity? stepped-tile?))
       {:tile stepped-tile?
        :entity stepped-entity?})))
 
+(defn damage-entity [entity state dmg]
+  (update entity :health - dmg))
 (defn move-entity [entity state direction]
   (update entity :position
           (fn [position]
@@ -184,19 +192,6 @@
     (update entity :turn-time dec)
     entity))
 
-(defn new-round [state]
-  (as-> (update-entities state entity-maybe-new-round) state
-    (update state :turn-tracker
-            (fn [tracker]
-              (reduce
-               (fn [turn-tracker-content entity-handle]
-                 (let [entity (lookup-entity state entity-handle)]
-                   (if (has-turn? entity) 
-                     (conj turn-tracker-content entity-handle)
-                     turn-tracker-content)))
-               tracker
-               (entity-handles state))))))
-
 (def wait-action identity)
 (defn move-action [actor move-direction]
   (fn [state]
@@ -214,9 +209,12 @@
         (update-entity state actor #(move-entity % state move-direction))))))
 (defn player-melee-combat-action [actor other-actor]
   (fn [state]
-    (informative-message state (str "Might begin combat! between "
-                                    (:name (lookup-entity state actor)) " and "
-                                    (:name (lookup-entity state other-actor))))))
+    (let [actor-entity (lookup-entity state actor)
+          other-actor-entity (lookup-entity state other-actor)]
+      (let [random-damage (+ (rand-int 4) 2)]
+        (as-> state state
+          (informative-message state (str (:name actor-entity) " does " random-damage " dmg to " (:name other-actor-entity)))
+          (update-entity state other-actor #(damage-entity % state random-damage)))))))
 (defn entity-turn-action [actor state input]
   ;; (move-action actor (rand-nth [:up :down :left :right]))
   wait-action
@@ -241,13 +239,28 @@
   (update state :turn-tracker
           (fn [tracker]
             (filterv
-             #(has-turn? (lookup-entity state %))
+             #(and (has-turn? (lookup-entity state %))
+                   (alive? (lookup-entity state %)))
              tracker))))
 
 (defn run-round [state action actor]
   (-> state
       action
       (update-entity actor entity-end-round)))
+
+(defn new-round [state]
+  (as-> (update-entities state entity-maybe-new-round) state
+    (update state :turn-tracker
+            (fn [tracker]
+              (reduce
+               (fn [turn-tracker-content entity-handle]
+                 (let [entity (lookup-entity state entity-handle)]
+                   (if (and (has-turn? entity)
+                            (alive? entity)) 
+                     (conj turn-tracker-content entity-handle)
+                     turn-tracker-content)))
+               tracker
+               (entity-handles state))))))
 
 (defn end-round [state input]
   (reduce
@@ -279,8 +292,8 @@
    ;;  :power 3.8
    ;;  :color white
    ;;  :ambient-strength 0.0085}
-   {:position [30 20]
-    :power (* (+ (Math/sin (/ time 1000)) 3) 999)
+   {:position [10 10]
+    :power (* (+ (Math/sin (/ time 1000)) 3) 10)
     :color white
     :ambient-strength 0.0085}])
 
@@ -298,7 +311,7 @@
   (canvas/clear-screen! canvas-context black)
   (let [camera [0 3]
         light-sources (light-sources state ticks)]
-    (draw-tilemap! canvas-context camera (:dungeon state) nil)
+    (draw-tilemap! canvas-context camera (:dungeon state) light-sources)
     (doseq [entity (into (:entities state) [(:player state)])]
       (draw-entity! canvas-context camera entity light-sources))
     (doseq [[row message] (map-indexed vector (:message-log state))]

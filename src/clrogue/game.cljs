@@ -45,31 +45,31 @@
 (defn alive? [entity]
   (> (:health entity) 0))
 (defn make-entity
-  ([position visual speed]
+  ([position visual speed health]
    {:name "guy"
-    :max-health 20
-    :health 20
+    :max-health health
+    :health health
     :position position
     :visual visual
     :speed speed
     :turn-time speed
     :wait-time 1})
-  ([position visual] (make-entity position visual 1)))
+  ([position visual] (make-entity position visual 1 20)))
 (defn make-player [position]
-  (assoc (make-entity position {:symbol \@ :foreground white :background black} 1)
+  (assoc (make-entity position {:symbol \@ :foreground white :background black} 1 40)
          :player? true
-         :name "hero"
-         :health 15))
+         :name "hero"))
 
 (defn make-game-state[]
   {:player (make-player [1 1])
-   :entities [(make-entity [4 7] {:symbol \@ :foreground green :background black} 2)
-              (make-entity [4 9] {:symbol \@ :foreground green :background black})
-              (make-entity [4 10] {:symbol \@ :foreground green :background black})]
+   :entities [(make-entity [4 7] {:symbol \@ :foreground green :background black} 1 10)
+              ;; (make-entity [4 9] {:symbol \@ :foreground green :background black})
+              ;; (make-entity [4 10] {:symbol \@ :foreground green :background black})
+              ]
    :turn-tracker []
    :previous-game-time 0
    :game-time 0
-   :dungeon (dungeon-generation/paint-rooms-and-edges (dungeon-generation/tunneling 4 [0 0 80 30]))})
+   :dungeon (dungeon-generation/paint-rooms-and-edges (dungeon-generation/tunneling 10 [0 0 80 30]))})
 
 ;; These are grid aligned.
 (defn draw-character! [canvas-context camera character point foreground-color background-color]
@@ -217,10 +217,14 @@
   (fn [state]
     (let [actor-entity (lookup-entity state actor)
           other-actor-entity (lookup-entity state other-actor)]
-      (let [random-damage (+ (rand-int 4) 2)]
-        (as-> state state
-          (informative-message state (str (:name actor-entity) " does " random-damage " dmg to " (:name other-actor-entity)))
-          (update-entity state other-actor #(damage-entity % state random-damage)))))))
+      (let [random-damage (+ (rand-int 4) 2)
+            hit-roll (rand-int 20)]
+        (if (> hit-roll 12)
+          (as-> state state
+            (informative-message state (str (:name actor-entity) " does " random-damage " dmg to " (:name other-actor-entity)))
+            (update-entity state other-actor #(damage-entity % state random-damage)))
+          (as-> state state
+            (informative-message state (str (:name actor-entity) " missed an attack against " (:name other-actor-entity)))))))))
 
 ;; I know I have pathfinding but it's expensive to run so this is going to be an idiot bump
 ;; also only four direction movement

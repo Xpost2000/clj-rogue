@@ -5,9 +5,6 @@
   (:require [clrogue.dungeon-generation :as dungeon-generation])
   (:require [clrogue.tilemap :as tilemap]))
                                         ;
-(defonce input-state (atom (input/new)))
-(defonce game-canvas-context (.getContext (.getElementById js/document "game-canvas") "2d"))
-
 (def white [255 255 255 255])
 (def black [0 0 0 255])
 (def blue [0 0 255 255])
@@ -296,28 +293,3 @@
                          (assoc (message-color message)
                                 3 (* 255 (/ (:time message) 1.0)))
                          16))))
-
-(defn game-loop [game-state time]
-  (try 
-    (do
-      (.requestAnimationFrame js/window
-                              (fn [current-time]
-                                (game-loop
-                                 (state-update game-state
-                                               @input-state
-                                               (max (/ (- current-time time) 1000) (/ 1 60))
-                                               current-time)
-                                 current-time)))
-      (state-draw game-canvas-context game-state @input-state time)
-      (swap! input-state input/new-frame))
-    (catch :default exception
-      (println exception)
-      (.alert js/window exception))))
-
-(defn setup-main-game-loop! []
-  (let [input-event-handlers (input/make-default-handlers input-state)]
-    (.addEventListener js/document "keydown" (:keydown input-event-handlers))
-    (.addEventListener js/document "keyup" (:keyup input-event-handlers))
-    (game-loop (make-game-state) 0)))
-
-(defn init [] (setup-main-game-loop!))

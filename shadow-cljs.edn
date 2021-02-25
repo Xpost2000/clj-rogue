@@ -11,5 +11,5 @@
  :builds
  {:frontend
   {:target :browser
-   :modules {:main {:init-fn clrogue.game/init}}
+   :modules {:main {:init-fn clrogue.web-core/init}}
    }}}

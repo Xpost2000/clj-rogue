@@ -60,18 +60,16 @@
              :background black}
     :speed 1}
    :player
-   {:inherits :human-base
-    :name "hero"
-    :player? true}
+   {:inherits :human-base :player? true}
    :zombie
    {:inherits :human-base
-    :name "zombie"
+    :name "zombie guy"
     :visual {:foreground green}}
    :fast-zombie
    {:inherits :zombie
     :name "fast-zombie"
-    :speed 10}
-   })
+    :visual {:foreground red}
+    :speed 10}})
 (def game-items
   {:healing-potion
    {:name "potion of health"
@@ -99,9 +97,13 @@
 (defn query-from
   ([table thing field]
    (if-let [query-value (get thing field)]
-     (let [parent-fields (mapv #(query-for table % field)
-                               (parents-of thing table))]
-       (apply merge (into parent-fields [query-value])))
+     (if (or (associative? query-value)
+             (vector? query-value)
+             (seq? query-value))
+       (let [parent-fields (mapv #(query-for table % field)
+                                 (parents-of thing table))]
+         (apply merge (into parent-fields [query-value])))
+       query-value)
      (when-let [parent (:inherits thing)]
        (query-for table parent field)))))
 
@@ -116,21 +118,22 @@
        (if-let [property-lookup (query-for table id property)]
          (assoc accumulator property property-lookup)
          accumulator))
-     base
-     properties)))
+     {} properties)))
 
 (defn item-usable? [item]
   (query-for game-items item :on-use))
 
 (defn make-entity [position type]
-  (-> (localize-properties game-entities type [:speed :max-health :health])
-      (assoc :position position
-             :turn-time (query-for game-entities type :speed)
-             :wait-time 1)))
+  (into {:inherits type}
+        (-> (localize-properties game-entities type [:speed :max-health :health])
+            (assoc :position position
+                   :turn-time (query-for game-entities type :speed)
+                   :wait-time 1))))
 
 (defn make-player [position]
   (-> (make-entity position :player) 
-      (assoc :inventory [:fake-healing-potion
+      (assoc :name "hero"
+             :inventory [:fake-healing-potion
                          :death-potion
                          :healing-potion])))
 
@@ -154,6 +157,8 @@
     (canvas/draw-text! canvas-context character [x y] "Dina" foreground-color 16)))
 
 (defn draw-entity! [canvas-context camera entity light-sources]
+  ;; (println entity)
+  ;; (println (query-from game-entities entity :health))
   (let [{:keys [symbol foreground background]} (query-from game-entities entity :visual)]
     (draw-character! canvas-context camera symbol (:position entity)
                      (color-lighting (:position entity)
@@ -297,12 +302,14 @@
           other-actor-entity (lookup-entity state other-actor)]
       (let [random-damage (+ (rand-int 4) 2)
             hit-roll (rand-int 20)]
+        ;; (println (query-from game-entities other-actor-entity :health))
+        ;; (println other-actor-entity)
         (if (> hit-roll 12)
           (as-> state state
-            (informative-message state (str (:name actor-entity) " does " random-damage " dmg to " (:name other-actor-entity)))
+            (informative-message state (str (query-from game-entities actor-entity :name) " does " random-damage " dmg to " (query-from game-entities other-actor-entity :name)))
             (update-entity state other-actor #(damage-entity % state random-damage)))
           (as-> state state
-            (informative-message state (str (:name actor-entity) " missed an attack against " (:name other-actor-entity)))))))))
+            (informative-message state (str (query-from game-entities actor-entity :name) " missed an attack against " (query-from game-entities other-actor-entity :name)))))))))
 
 (defn use-item-action [actor item]
   (fn [state]

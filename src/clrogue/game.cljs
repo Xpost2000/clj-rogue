@@ -58,16 +58,20 @@
 (defn make-player [position]
   (assoc (make-entity position {:symbol \@ :foreground white :background black} 1 40)
          :player? true
-         :name "hero"))
+         :name "hero"
+         :inventory []))
 
 (defn make-game-state[]
   {:player (make-player [1 1])
-   :entities [(make-entity [4 7] {:symbol \@ :foreground green :background black} 1 10)
+   :entities [;; (make-entity [4 7] {:symbol \@ :foreground green :background black} 1 10)
               ;; (make-entity [4 9] {:symbol \@ :foreground green :background black})
               ;; (make-entity [4 10] {:symbol \@ :foreground green :background black})
               ]
+   :screen :gameplay
    :turn-tracker []
+
    :previous-game-time 0
+
    :game-time 0
    :dungeon (dungeon-generation/paint-rooms-and-edges (dungeon-generation/tunneling 10 [0 0 80 30]))})
 
@@ -315,14 +319,22 @@
    state
    (:turn-tracker state)))
 
+(defn player-has-turn? [state] (= (:type (first (:turn-tracker state))) :player))
 (defn player-alive? [state] (alive? (:player state)))
+(defn handle-player-ui-interaction [state input]
+  (cond (input/event-keydown input "i") (assoc state :screen :inventory) 
+        (input/event-keydown input "s") (assoc state :screen :gameplay)
+        :else state))
+
 (defn state-update [state input delta-time ticks]
   (if (player-alive? state)
-    (as-> state state
-      (assoc state :previous-game-time (:game-time state))
+    (as-> (assoc state :previous-game-time (:game-time state)) state
       (if (empty? (:turn-tracker state))
         (new-round state)
         (end-round state input))
+      (if (player-has-turn? state)
+        (handle-player-ui-interaction state input)
+        state)
       (clean-turn-tracker state)
       (update-messages state delta-time)
       (if (empty? (:turn-tracker state))
@@ -394,14 +406,18 @@
   ([canvas-context state input ticks] (state-draw canvas-context state input ticks false))
   ([canvas-context state input ticks forced]
    (if (player-alive? state)
-     (when (or forced (not (= (:game-time state) (:previous-game-time state)))) 
-       (canvas/fill-rectangle! canvas-context [0 0 800 600] black)
-       (let [camera [0 3]
-             light-sources (light-sources state ticks)]
-         (draw-tilemap! canvas-context camera (:dungeon state) light-sources)
-         (doseq [entity (into (:entities state) [(:player state)])]
-           (draw-entity! canvas-context camera entity light-sources)))
-       (state-ui-draw canvas-context state input ticks))
+     (case (:screen state)
+       :gameplay
+       (when (or true (comment (or forced (not (= (:game-time state) (:previous-game-time state)))))) 
+         (canvas/fill-rectangle! canvas-context [0 0 800 600] black)
+         (let [camera [0 3]
+               light-sources (light-sources state ticks)]
+           (draw-tilemap! canvas-context camera (:dungeon state) light-sources)
+           (doseq [entity (into (:entities state) [(:player state)])]
+             (draw-entity! canvas-context camera entity light-sources)))
+         (state-ui-draw canvas-context state input ticks))
+       :inventory (do
+                    (canvas/fill-rectangle! canvas-context [0 0 800 600] red)))
      (do
        (canvas/fill-rectangle! canvas-context [0 0 800 600] black)
        (canvas/draw-text! canvas-context

@@ -55,11 +55,32 @@
     :turn-time speed
     :wait-time 1})
   ([position visual] (make-entity position visual 1 20)))
+
+(declare informative-message)
+(declare update-entity)
+(def game-items
+  {:healing-potion
+   {:name "potion of health"
+    :on-use (fn [user-handle state]
+              (update-entity user-handle state #(update % :health + 25)))}
+   :fake-healing-potion
+   {:inherits :healing-potion
+    :on-use (fn [user-handle state]
+              (informative-message state "phony potion"))}})
+(defn query-for
+  ([table id field]
+   (let [lookup (get table id)]
+     (if-let [query-value (get lookup field)]
+       query-value
+       (when-let [parent (:inherits lookup)]
+         (query-for table parent field)))))
+  ([table id] (get table id)))
+
 (defn make-player [position]
   (assoc (make-entity position {:symbol \@ :foreground white :background black} 1 40)
          :player? true
          :name "hero"
-         :inventory []))
+         :inventory [:fake-healing-potion]))
 
 (defn make-game-state[]
   {:player (make-player [1 1])
@@ -417,7 +438,13 @@
              (draw-entity! canvas-context camera entity light-sources)))
          (state-ui-draw canvas-context state input ticks))
        :inventory (do
-                    (canvas/fill-rectangle! canvas-context [0 0 800 600] red)))
+                    (canvas/fill-rectangle! canvas-context [0 0 800 600] black)
+                    (let [player-entity (:player state)]
+                      (doseq [[row item] (map-indexed vector (:inventory player-entity))]
+                        (let [item-lookup (query-for game-items item :name)]
+                          (canvas/draw-text! canvas-context
+                                             item-lookup
+                                             [0 (+ 48 (* 16 row))] "Dina" white 16))))))
      (do
        (canvas/fill-rectangle! canvas-context [0 0 800 600] black)
        (canvas/draw-text! canvas-context

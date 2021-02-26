@@ -198,10 +198,18 @@
 ;; unordered, for iteration, for combat if initiative is ever a thing, sort by that.
 (defn entity-handles [state]
   (into [(player-handle)] (vec (map-indexed #(entity-handle %1) (:entities state)))))
-(defn lookup-entity [state handle]
-  (case (:type handle)
-    :player (:player state)
-    :entity (get (:entities state) (:index handle))))
+
+(defmulti lookup-entity (fn [state handle] (:type handle)))
+(defmethod lookup-entity :player [state handle]
+  (:player state))
+(defmethod lookup-entity :entity [state handle]
+  (get-in state [:entities (:index handle)]))
+
+(defmulti update-entity (fn [state handle f] (:type handle)))
+(defmethod update-entity :player [state handle f]
+  (update state :player f))
+(defmethod update-entity :entity [state handle f]
+  (update-in state [:entities (:index handle)] f))
 
 (defn entities [state]
   (map #(lookup-entity state %) (entity-handles state)))
@@ -227,12 +235,6 @@
           (fn [position]
             (let [obstruction (try-move state position direction)]
               (if obstruction position (move position direction))))))
-
-(defn update-entity [state handle f]
-  (case (:type handle)
-    :player (update state :player f)
-    :entity (update-in state [:entities (:index handle)] f)
-    state))
 
 (defn update-entities [state f]
   (reduce #(update-entity %1 %2 f) state (entity-handles state)))

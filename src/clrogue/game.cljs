@@ -44,20 +44,25 @@
   (/ (:health entity) (:max-health entity)))
 (defn alive? [entity]
   (> (:health entity) 0))
-(defn make-entity
-  ([position visual speed health]
-   {:name "guy"
-    :max-health health
-    :health health
-    :position position
-    :visual visual
-    :speed speed
-    :turn-time speed
-    :wait-time 1})
-  ([position visual] (make-entity position visual 1 20)))
 
 (declare informative-message)
 (declare update-entity)
+(declare damage-entity)
+(declare heal-entity)
+
+(def game-entities
+  {:human-base
+   {:name "human"
+    :max-health 20
+    :health 20
+   	:visual {:symbol \@
+             :foreground white
+             :background black}
+    :speed 1}
+   :player
+   {:inherits :human-base
+    :name "hero"
+    :player? true}})
 (def game-items
   {:healing-potion
    {:name "potion of health"
@@ -71,25 +76,57 @@
    {:inherits :healing-potion
     :on-use (fn [user-handle state]
               (update-entity state user-handle #(damage-entity % state 100)))}})
+
+(declare query-from)
+(declare query-for)
+(defn query-from
+  ([table thing field]
+   (if-let [query-value (get thing field)]
+     query-value
+     (when-let [parent (:inherits thing)]
+       (query-for table parent field)))))
+
 (defn query-for
-  ([table id field]
-   (let [lookup (get table id)]
-     (if-let [query-value (get lookup field)]
-       query-value
-       (when-let [parent (:inherits lookup)]
-         (query-for table parent field)))))
+  ([table id field] (query-from table (get table id) field))
   ([table id] (get table id)))
+
+(defn localize-properties [table id properties]
+  (let [base (query-for table id)]
+    (reduce
+     (fn [accumulator property]
+       (if-let [property-lookup (query-for table id property)]
+         (assoc accumulator property property-lookup)
+         accumulator))
+     base
+     properties)))
 
 (defn item-usable? [item]
   (query-for game-items item :on-use))
 
+(defn make-entity
+  ([position visual speed health]
+   {:name "guy"
+    :max-health health
+    :health health
+    :position position
+    :visual visual
+    :speed speed
+    :turn-time speed
+    :wait-time 1})
+  ([position visual] (make-entity position visual 1 20)))
+
 (defn make-player [position]
-  (assoc (make-entity position {:symbol \@ :foreground white :background black} 1 40)
-         :player? true
-         :name "hero"
-         :inventory [:fake-healing-potion
-                     :death-potion
-                     :healing-potion]))
+  (as-> (localize-properties game-entities
+                             :player
+                             [:speed :max-health :health])
+      player
+    (assoc player
+           :position position
+           :turn-time (query-for game-entities :player :speed)
+           :wait-time 1
+           :inventory [:fake-healing-potion
+                       :death-potion
+                       :healing-potion])))
 
 (defn make-game-state[]
   {:player (make-player [1 1])
@@ -114,7 +151,7 @@
     (canvas/draw-text! canvas-context character [x y] "Dina" foreground-color 16)))
 
 (defn draw-entity! [canvas-context camera entity light-sources]
-  (let [{:keys [symbol foreground background]} (:visual entity)]
+  (let [{:keys [symbol foreground background]} (query-from game-entities entity :visual)]
     (draw-character! canvas-context camera symbol (:position entity)
                      (color-lighting (:position entity)
                                      (if (alive? entity) foreground [40 40 40 255])

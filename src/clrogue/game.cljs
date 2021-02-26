@@ -62,7 +62,11 @@
    :player
    {:inherits :human-base
     :name "hero"
-    :player? true}})
+    :player? true}
+   :zombie
+   {:inherits :human-base
+    :name "zombie"
+    :visual {:foreground green}}})
 (def game-items
   {:healing-potion
    {:name "potion of health"
@@ -116,17 +120,15 @@
   ([position visual] (make-entity position visual 1 20)))
 
 (defn make-player [position]
-  (as-> (localize-properties game-entities
-                             :player
-                             [:speed :max-health :health])
-      player
-    (assoc player
-           :position position
-           :turn-time (query-for game-entities :player :speed)
-           :wait-time 1
-           :inventory [:fake-healing-potion
-                       :death-potion
-                       :healing-potion])))
+  (-> (localize-properties game-entities
+                           :player
+                           [:speed :max-health :health])
+      (assoc :position position
+             :turn-time (query-for game-entities :player :speed)
+             :wait-time 1
+             :inventory [:fake-healing-potion
+                         :death-potion
+                         :healing-potion])))
 
 (defn make-game-state[]
   {:player (make-player [1 1])

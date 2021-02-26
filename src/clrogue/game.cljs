@@ -107,32 +107,21 @@
 (defn item-usable? [item]
   (query-for game-items item :on-use))
 
-(defn make-entity
-  ([position visual speed health]
-   {:name "guy"
-    :max-health health
-    :health health
-    :position position
-    :visual visual
-    :speed speed
-    :turn-time speed
-    :wait-time 1})
-  ([position visual] (make-entity position visual 1 20)))
+(defn make-entity [position type]
+  (-> (localize-properties game-entities type [:speed :max-health :health])
+      (assoc :position position
+             :turn-time (query-for game-entities type :speed)
+             :wait-time 1)))
 
 (defn make-player [position]
-  (-> (localize-properties game-entities
-                           :player
-                           [:speed :max-health :health])
-      (assoc :position position
-             :turn-time (query-for game-entities :player :speed)
-             :wait-time 1
-             :inventory [:fake-healing-potion
+  (-> (make-entity position :player) 
+      (assoc :inventory [:fake-healing-potion
                          :death-potion
                          :healing-potion])))
 
 (defn make-game-state[]
   {:player (make-player [1 1])
-   :entities [;; (make-entity [4 7] {:symbol \@ :foreground green :background black} 1 10)
+   :entities [(make-entity [4 7] :zombie)
               ;; (make-entity [4 9] {:symbol \@ :foreground green :background black})
               ;; (make-entity [4 10] {:symbol \@ :foreground green :background black})
               ]

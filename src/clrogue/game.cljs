@@ -66,7 +66,12 @@
    :zombie
    {:inherits :human-base
     :name "zombie"
-    :visual {:foreground green}}})
+    :visual {:foreground green}}
+   :fast-zombie
+   {:inherits :zombie
+    :name "fast-zombie"
+    :speed 10}
+   })
 (def game-items
   {:healing-potion
    {:name "potion of health"
@@ -83,15 +88,25 @@
 
 (declare query-from)
 (declare query-for)
+(defn parents-of [entity table]
+  (loop [entity entity
+         parents []]
+    (if-let [parent-entity (query-for table (:inherits entity))]
+      (recur parent-entity
+             (conj parents (:inherits entity)))
+      parents)))
+
 (defn query-from
   ([table thing field]
    (if-let [query-value (get thing field)]
-     query-value
+     (let [parent-fields (mapv #(query-for table % field)
+                               (parents-of thing table))]
+       (apply merge (into parent-fields [query-value])))
      (when-let [parent (:inherits thing)]
        (query-for table parent field)))))
 
 (defn query-for
-  ([table id field] (query-from table (get table id) field))
+  ([table id field] (query-from table (query-for table id) field))
   ([table id] (get table id)))
 
 (defn localize-properties [table id properties]
@@ -121,10 +136,7 @@
 
 (defn make-game-state[]
   {:player (make-player [1 1])
-   :entities [(make-entity [4 7] :zombie)
-              ;; (make-entity [4 9] {:symbol \@ :foreground green :background black})
-              ;; (make-entity [4 10] {:symbol \@ :foreground green :background black})
-              ]
+   :entities [(make-entity [4 7] :zombie)]
    :screen :gameplay
    :currently-selected-inventory-item 0
 
@@ -133,7 +145,7 @@
    :previous-game-time 0
 
    :game-time 0
-   :dungeon (dungeon-generation/paint-rooms-and-edges (dungeon-generation/tunneling 10 [0 0 80 30]))})
+   :dungeon (dungeon-generation/paint-rooms-and-edges (dungeon-generation/tunneling 3 [0 0 20 20]))})
 
 ;; These are grid aligned.
 (defn draw-character! [canvas-context camera character point foreground-color background-color]
@@ -487,7 +499,7 @@
    (if (player-alive? state)
      (case (:screen state)
        :gameplay
-       (when (or true (comment (or forced (not (= (:game-time state) (:previous-game-time state)))))) 
+       (when (or forced (not (= (:game-time state) (:previous-game-time state)))) 
          (canvas/fill-rectangle! canvas-context [0 0 800 600] black)
          (let [camera [0 3]
                light-sources (light-sources state ticks)]

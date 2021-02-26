@@ -55,6 +55,7 @@
    {:name "human"
     :max-health 20
     :health 20
+    :experience 100
    	:visual {:symbol \@
              :foreground white
              :background black}
@@ -68,6 +69,7 @@
    :fast-zombie
    {:inherits :zombie
     :name "fast-zombie"
+    :experience 200
     :visual {:foreground red}
     :speed 10}})
 (def game-items

@@ -157,8 +157,6 @@
     (canvas/draw-text! canvas-context character [x y] "Dina" foreground-color 16)))
 
 (defn draw-entity! [canvas-context camera entity light-sources]
-  ;; (println entity)
-  ;; (println (query-from game-entities entity :health))
   (let [{:keys [symbol foreground background]} (query-from game-entities entity :visual)]
     (draw-character! canvas-context camera symbol (:position entity)
                      (color-lighting (:position entity)
@@ -424,6 +422,9 @@
         (input/event-keydown input "ArrowUp") (update state :currently-selected-inventory-item dec)
         :else state))
 
+(defn clean-dead-entities [state]
+  (update state :entities #(filterv alive? %)))
+
 (defn state-update [state input delta-time ticks]
   (if (player-alive? state)
     (as-> (assoc state :previous-game-time (:game-time state)) state
@@ -434,6 +435,7 @@
         (handle-player-ui-interaction state input)
         state)
       (clean-turn-tracker state)
+      (clean-dead-entities state)
       (update-messages state delta-time)
       (if (empty? (:turn-tracker state))
         (update-entities state entity-wait-for-turn)

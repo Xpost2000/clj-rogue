@@ -62,11 +62,15 @@
   {:healing-potion
    {:name "potion of health"
     :on-use (fn [user-handle state]
-              (update-entity user-handle state #(update % :health + 25)))}
+              (update-entity state user-handle #(heal-entity % state 100)))}
    :fake-healing-potion
    {:inherits :healing-potion
     :on-use (fn [user-handle state]
-              (informative-message state "phony potion"))}})
+              (informative-message state "phony potion"))}
+   :death-potion
+   {:inherits :healing-potion
+    :on-use (fn [user-handle state]
+              (update-entity state user-handle #(damage-entity % state 100)))}})
 (defn query-for
   ([table id field]
    (let [lookup (get table id)]
@@ -76,11 +80,16 @@
          (query-for table parent field)))))
   ([table id] (get table id)))
 
+(defn item-usable? [item]
+  (query-for game-items item :on-use))
+
 (defn make-player [position]
   (assoc (make-entity position {:symbol \@ :foreground white :background black} 1 40)
          :player? true
          :name "hero"
-         :inventory [:fake-healing-potion]))
+         :inventory [:fake-healing-potion
+                     :death-potion
+                     :healing-potion]))
 
 (defn make-game-state[]
   {:player (make-player [1 1])
@@ -89,6 +98,8 @@
               ;; (make-entity [4 10] {:symbol \@ :foreground green :background black})
               ]
    :screen :gameplay
+   :currently-selected-inventory-item 0
+
    :turn-tracker []
 
    :previous-game-time 0
@@ -164,6 +175,8 @@
       {:tile stepped-tile?
        :entity stepped-entity?})))
 
+(defn heal-entity [entity state amount]
+  (update entity :health + amount))
 (defn damage-entity [entity state dmg]
   (update entity :health - dmg))
 (defn move-entity [entity state direction]
@@ -251,6 +264,12 @@
           (as-> state state
             (informative-message state (str (:name actor-entity) " missed an attack against " (:name other-actor-entity)))))))))
 
+(defn use-item-action [actor item]
+  (fn [state]
+    (let [entity (lookup-entity state actor)
+          on-use-fn (query-for game-items item :on-use)]
+      (on-use-fn actor state))))
+
 ;; I know I have pathfinding but it's expensive to run so this is going to be an idiot bump
 ;; also only four direction movement
 (defn chase-range? [entity target-position]
@@ -282,16 +301,25 @@
             :else
             (move-action actor random-direction))
       (move-action actor movement-direction))))
+
 (defn player-turn-action [actor state input]
   (let [move-direction (movement-direction input)
         self-entity (lookup-entity state actor)]
-    (cond move-direction
-          (if-let [obstacle (try-move state (:position self-entity) move-direction)]
-            (if-let [other-entity (:entity obstacle)]
-              (player-melee-combat-action actor other-entity)
-              (player-move-action actor move-direction))
-            (player-move-action actor move-direction))
-          (input/event-keydown input ".") wait-action)))
+    (cond
+      (= (:screen state) :inventory)
+      (if (input/event-keydown input "Enter")
+        (do
+          (let [item-to-use (get-in self-entity [:inventory
+                                                 (:currently-selected-inventory-item state)])]
+            (if (item-usable? item-to-use)
+              (use-item-action actor item-to-use)))))
+      move-direction
+      (if-let [obstacle (try-move state (:position self-entity) move-direction)]
+        (if-let [other-entity (:entity obstacle)]
+          (player-melee-combat-action actor other-entity)
+          (player-move-action actor move-direction))
+        (player-move-action actor move-direction))
+      (input/event-keydown input ".") wait-action)))
 
 (defn turn-action [actor state input]
   (case (:type actor)
@@ -345,6 +373,8 @@
 (defn handle-player-ui-interaction [state input]
   (cond (input/event-keydown input "i") (assoc state :screen :inventory) 
         (input/event-keydown input "s") (assoc state :screen :gameplay)
+        (input/event-keydown input "ArrowDown") (update state :currently-selected-inventory-item inc)
+        (input/event-keydown input "ArrowUp") (update state :currently-selected-inventory-item dec)
         :else state))
 
 (defn state-update [state input delta-time ticks]
@@ -443,7 +473,9 @@
                       (doseq [[row item] (map-indexed vector (:inventory player-entity))]
                         (let [item-lookup (query-for game-items item :name)]
                           (canvas/draw-text! canvas-context
-                                             item-lookup
+                                             (if (= (:currently-selected-inventory-item state) row)
+                                               (str "=> " item-lookup)
+                                               item-lookup)
                                              [0 (+ 48 (* 16 row))] "Dina" white 16))))))
      (do
        (canvas/fill-rectangle! canvas-context [0 0 800 600] black)
